@@ -43,6 +43,13 @@ class RequirementApiTest {
     private Long systemId;
     private Long versionId;
 
+    @Test
+    void reportsApplicationHealth() throws Exception {
+        mockMvc.perform(get("/api/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
+
     @BeforeEach
     void createSystemAndVersion() {
         var system = systemRepository.save(new SystemEntity(SystemProfile.create("客户管理系统-" + java.util.UUID.randomUUID(), "李明", List.of())));
