@@ -8,6 +8,7 @@ record SystemResponse(
         String ownerName,
         SystemStatus status,
         List<String> collaborators,
+        long recordVersion,
         long versionCount,
         long requirementCount
 ) {
@@ -19,6 +20,7 @@ record SystemResponse(
                 system.ownerName(),
                 system.status(),
                 system.collaborators(),
+                system.recordVersion(),
                 versionCount,
                 requirementCount
         );

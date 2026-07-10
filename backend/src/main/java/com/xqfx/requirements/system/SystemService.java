@@ -41,8 +41,9 @@ class SystemService {
     }
 
     @Transactional
-    SystemResponse update(Long id, String name, String ownerName, List<String> collaborators) {
+    SystemResponse update(Long id, String name, String ownerName, List<String> collaborators, Long recordVersion) {
         var system = findActive(id);
+        assertRecordVersion(system.recordVersion(), recordVersion, "系统已被其他人修改，请刷新后重试");
         var profile = SystemProfile.create(name, ownerName, collaborators);
         if (repository.existsByActiveNameKeyAndIdNot(SystemEntity.normalizedName(profile.name()), id)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统名称已存在");
@@ -91,6 +92,12 @@ class SystemService {
     private SystemEntity findActive(Long id) {
         return repository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "系统不存在"));
+    }
+
+    private void assertRecordVersion(long currentVersion, Long requestVersion, String message) {
+        if (requestVersion == null || requestVersion != currentVersion) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, message);
+        }
     }
 
     private SystemResponse toResponse(SystemEntity system) {

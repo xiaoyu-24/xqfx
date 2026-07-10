@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Version;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,9 @@ public class SystemEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private long recordVersion;
 
     @Column(nullable = false, length = 100)
     private String name;
@@ -67,6 +71,10 @@ public class SystemEntity {
 
     public Long id() {
         return id;
+    }
+
+    long recordVersion() {
+        return recordVersion;
     }
 
     String name() {

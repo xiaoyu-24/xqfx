@@ -10,6 +10,7 @@ type SystemItem = {
   ownerName: string
   collaborators: string[]
   status: SystemStatus
+  recordVersion: number
   versionCount: number
   requirementCount: number
 }
@@ -28,7 +29,7 @@ const collaboratorFilter = ref('')
 const statusFilter = ref('')
 const selectedSystemId = ref<number | null>(null)
 const systemFormMode = ref<'create' | 'edit' | null>(null)
-const systemForm = reactive({ id: 0, name: '', ownerName: '', collaborators: '' })
+const systemForm = reactive({ id: 0, name: '', ownerName: '', collaborators: '', recordVersion: 0 })
 const versionFormMode = ref<'create' | 'edit' | null>(null)
 const versionForm = reactive({ id: 0, name: '' })
 const migrationSourceId = ref<number | null>(null)
@@ -74,12 +75,12 @@ const loadVersions = async (systemId: number) => {
 }
 
 const showCreateSystem = () => {
-  Object.assign(systemForm, { id: 0, name: '', ownerName: '', collaborators: '' })
+  Object.assign(systemForm, { id: 0, name: '', ownerName: '', collaborators: '', recordVersion: 0 })
   systemFormMode.value = 'create'
 }
 
 const showEditSystem = (system: SystemItem) => {
-  Object.assign(systemForm, { id: system.id, name: system.name, ownerName: system.ownerName, collaborators: system.collaborators.join(', ') })
+  Object.assign(systemForm, { id: system.id, name: system.name, ownerName: system.ownerName, collaborators: system.collaborators.join(', '), recordVersion: system.recordVersion })
   systemFormMode.value = 'edit'
 }
 
@@ -101,13 +102,15 @@ const saveSystem = async () => {
       await api.post('/systems', body)
       ElMessage.success('新增系统成功')
     } else {
-      await api.put(`/systems/${systemForm.id}`, body)
+      await api.put(`/systems/${systemForm.id}`, { ...body, recordVersion: systemForm.recordVersion })
       ElMessage.success('系统信息已更新')
     }
     systemFormMode.value = null
     await loadSystems()
-  } catch {
-    ElMessage.error('保存系统失败，请检查名称是否重复')
+  } catch (error: unknown) {
+    const status = (error as { response?: { status?: number } }).response?.status
+    if (status === 409) ElMessage.error('系统已被其他人修改，请刷新后重试')
+    else ElMessage.error('保存系统失败，请检查名称是否重复')
   }
 }
 
@@ -244,7 +247,7 @@ onMounted(loadSystems)
           <tr v-for="system in filteredSystems" :key="system.id">
             <td>{{ system.name }}</td><td>{{ system.ownerName }}</td><td>{{ system.collaborators.join('、') || '—' }}</td><td>{{ system.status === 'ACTIVE' ? '启用' : '停用' }}</td><td>{{ system.versionCount }}</td><td>{{ system.requirementCount }}</td>
             <td class="row-actions">
-              <button type="button" @click="showEditSystem(system)">编辑</button>
+              <button type="button" :data-test="`edit-system-${system.id}`" @click="showEditSystem(system)">编辑</button>
               <button type="button" :data-test="`view-requirements-${system.id}`" @click="viewRequirements(system.id)">查看需求</button>
               <button type="button" :data-test="`versions-${system.id}`" @click="loadVersions(system.id)">版本管理</button>
               <button type="button" @click="toggleSystem(system)">{{ system.status === 'ACTIVE' ? '停用' : '启用' }}</button>

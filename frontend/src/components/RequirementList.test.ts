@@ -66,7 +66,7 @@ describe('RequirementList', () => {
   it('edits a requirement from the list', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 9, title: '原始标题', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
-      if (url === '/requirements/9') return Promise.resolve({ data: { id: 9, title: '原始标题', content: '原始内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
+      if (url === '/requirements/9') return Promise.resolve({ data: { id: 9, title: '原始标题', content: '原始内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null, recordVersion: 3 } })
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
@@ -76,7 +76,7 @@ describe('RequirementList', () => {
     await wrapper.get('[data-test="edit-title"]').setValue('修改后的标题')
     await wrapper.get('[data-test="edit-form"]').trigger('submit.prevent')
 
-    expect(put).toHaveBeenCalledWith('/requirements/9', expect.objectContaining({ title: '修改后的标题', systemId: null, targetVersionId: null }))
+    expect(put).toHaveBeenCalledWith('/requirements/9', expect.objectContaining({ title: '修改后的标题', systemId: null, targetVersionId: null, recordVersion: 3 }))
   })
 
   it('auto-queries requirements for a preset system', async () => {

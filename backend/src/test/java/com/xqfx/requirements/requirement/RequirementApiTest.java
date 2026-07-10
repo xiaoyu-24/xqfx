@@ -141,12 +141,13 @@ class RequirementApiTest {
                                 """.formatted(systemId, versionId)))
                 .andReturn();
         var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
 
         mockMvc.perform(put("/api/requirements/{id}", id)
                         .contentType("application/json")
                         .content("""
-                                {"requesterName":"周杰伦","department":"研发部","title":"更新后的标题","type":"REQUIREMENT","content":"更新后的详细内容","systemId":%d,"targetVersionId":%d,"periodStartDate":"2026-07-12","periodEndDate":"2026-07-18","status":"CONFIRMED"}
-                                """.formatted(systemId, versionId)))
+                                {"requesterName":"周杰伦","department":"研发部","title":"更新后的标题","type":"REQUIREMENT","content":"更新后的详细内容","systemId":%d,"targetVersionId":%d,"periodStartDate":"2026-07-12","periodEndDate":"2026-07-18","status":"CONFIRMED","recordVersion":%s}
+                                """.formatted(systemId, versionId, recordVersion)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.requesterName").value("周杰伦"))
                 .andExpect(jsonPath("$.department").value("研发部"))
@@ -156,6 +157,34 @@ class RequirementApiTest {
                 .andExpect(jsonPath("$.status").value("CONFIRMED"))
                 .andExpect(jsonPath("$.periodStartDate").value("2026-07-12"))
                 .andExpect(jsonPath("$.periodEndDate").value("2026-07-18"));
+    }
+
+    @Test
+    void rejectsUpdatingRequirementWithStaleRecordVersion() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"并发用户","department":"研发部","title":"原始需求","type":"BUG","content":"第一次保存"}
+                                """))
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
+
+        mockMvc.perform(put("/api/requirements/{id}", id)
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"并发用户","department":"研发部","title":"第一次更新","type":"BUG","content":"第一次修改","recordVersion":%s}
+                                """.formatted(recordVersion)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recordVersion").value(1));
+
+        mockMvc.perform(put("/api/requirements/{id}", id)
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"并发用户","department":"研发部","title":"过期更新","type":"BUG","content":"旧版本提交","recordVersion":%s}
+                                """.formatted(recordVersion)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("需求已被其他人修改，请刷新后重试"));
     }
 
     @Test
@@ -214,12 +243,13 @@ class RequirementApiTest {
                         .content("{}"))
                 .andReturn();
         var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
 
         mockMvc.perform(put("/api/requirements/{id}/draft", id)
                         .contentType("application/json")
                         .content("""
-                                {"title":"补充后的草稿","content":"尚未填写其他必填字段"}
-                                """))
+                                {"title":"补充后的草稿","content":"尚未填写其他必填字段","recordVersion":%s}
+                                """.formatted(recordVersion)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("补充后的草稿"))
                 .andExpect(jsonPath("$.content").value("尚未填写其他必填字段"))
@@ -233,12 +263,13 @@ class RequirementApiTest {
                         .content("{}"))
                 .andReturn();
         var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
 
         mockMvc.perform(put("/api/requirements/{id}", id)
                         .contentType("application/json")
                         .content("""
-                                {"requesterName":"吴迪","department":"客服部","title":"草稿转正式","type":"REQUIREMENT","content":"这是一条已经填写完整的正式需求"}
-                                """))
+                                {"requesterName":"吴迪","department":"客服部","title":"草稿转正式","type":"REQUIREMENT","content":"这是一条已经填写完整的正式需求","recordVersion":%s}
+                                """.formatted(recordVersion)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.saveType").value("SUBMITTED"))
                 .andExpect(jsonPath("$.status").value("PENDING_EVALUATION"));
@@ -320,12 +351,13 @@ class RequirementApiTest {
                                 """.formatted(systemId)))
                 .andReturn();
         var requirementId = com.jayway.jsonpath.JsonPath.read(requirement.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(requirement.getResponse().getContentAsString(), "$.recordVersion").toString();
 
         mockMvc.perform(put("/api/requirements/{id}", requirementId)
                         .contentType("application/json")
                         .content("""
-                                {"requesterName":"编辑用户","department":"研发部","title":"编辑系统校验","type":"BUG","content":"不能主动更换到停用系统","systemId":%s}
-                                """.formatted(inactiveSystemId)))
+                                {"requesterName":"编辑用户","department":"研发部","title":"编辑系统校验","type":"BUG","content":"不能主动更换到停用系统","systemId":%s,"recordVersion":%s}
+                                """.formatted(inactiveSystemId, recordVersion)))
                 .andExpect(status().isConflict());
     }
 

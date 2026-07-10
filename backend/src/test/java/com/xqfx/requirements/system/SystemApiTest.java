@@ -63,17 +63,46 @@ class SystemApiTest {
                                 """))
                 .andReturn();
         var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
 
         mockMvc.perform(put("/api/systems/{id}", id)
                         .contentType("application/json")
                         .content("""
-                                {"name":"新系统名","ownerName":"新负责人","collaborators":["协助人乙","协助人丙"]}
-                                """))
+                                {"name":"新系统名","ownerName":"新负责人","collaborators":["协助人乙","协助人丙"],"recordVersion":%s}
+                                """.formatted(recordVersion)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("新系统名"))
                 .andExpect(jsonPath("$.ownerName").value("新负责人"))
                 .andExpect(jsonPath("$.collaborators[0]").value("协助人乙"))
                 .andExpect(jsonPath("$.collaborators[1]").value("协助人丙"));
+    }
+
+    @Test
+    void rejectsUpdatingSystemWithStaleRecordVersion() throws Exception {
+        var created = mockMvc.perform(post("/api/systems")
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"并发系统","ownerName":"原负责人","collaborators":["协助人甲"]}
+                                """))
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
+
+        mockMvc.perform(put("/api/systems/{id}", id)
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"第一次更新","ownerName":"负责人甲","collaborators":["协助人乙"],"recordVersion":%s}
+                                """.formatted(recordVersion)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recordVersion").value(1));
+
+        mockMvc.perform(put("/api/systems/{id}", id)
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"过期更新","ownerName":"负责人乙","collaborators":["协助人丙"],"recordVersion":%s}
+                                """.formatted(recordVersion)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("系统已被其他人修改，请刷新后重试"));
     }
 
     @Test

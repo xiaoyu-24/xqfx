@@ -44,6 +44,28 @@ describe('SystemManagement', () => {
     })
   })
 
+  it('sends record version when editing a system', async () => {
+    get.mockResolvedValue({
+      data: [{ id: 12, name: '客户系统', ownerName: '李明', collaborators: ['王芳'], status: 'ACTIVE', versionCount: 1, requirementCount: 3, recordVersion: 5 }],
+    })
+    put.mockResolvedValue({
+      data: { id: 12, name: '客户系统-新', ownerName: '李明', collaborators: ['王芳'], status: 'ACTIVE', versionCount: 1, requirementCount: 3, recordVersion: 6 },
+    })
+    const wrapper = mount(SystemManagement)
+    await flushPromises()
+
+    await wrapper.get('[data-test="edit-system-12"]').trigger('click')
+    await wrapper.get('[data-test="system-name"]').setValue('客户系统-新')
+    await wrapper.get('form').trigger('submit.prevent')
+
+    expect(put).toHaveBeenCalledWith('/systems/12', {
+      name: '客户系统-新',
+      ownerName: '李明',
+      collaborators: ['王芳'],
+      recordVersion: 5,
+    })
+  })
+
   it('filters systems by owner and status while showing version and requirement counts', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/systems') {

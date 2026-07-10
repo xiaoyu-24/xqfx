@@ -39,7 +39,7 @@ class SystemController {
 
     @PutMapping("/{id}")
     SystemResponse update(@PathVariable Long id, @Valid @RequestBody UpdateSystemRequest request) {
-        return service.update(id, request.name(), request.ownerName(), request.collaborators());
+        return service.update(id, request.name(), request.ownerName(), request.collaborators(), request.recordVersion());
     }
 
     @PatchMapping("/{id}/status")
@@ -71,7 +71,8 @@ class SystemController {
     record UpdateSystemRequest(
             @NotBlank String name,
             @NotBlank String ownerName,
-            List<String> collaborators
+            List<String> collaborators,
+            @jakarta.validation.constraints.NotNull Long recordVersion
     ) {
         UpdateSystemRequest {
             collaborators = collaborators == null ? List.of() : List.copyOf(collaborators);

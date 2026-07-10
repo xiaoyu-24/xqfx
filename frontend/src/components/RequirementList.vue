@@ -16,7 +16,7 @@ type VersionItem = { id: number; name: string; status: string }
 type Item = {
   id: number; title: string; type: string | null; requesterName: string | null; department: string | null; status: string | null
   submittedAt: string | null; systemId: number | null; targetVersionId: number | null; periodStartDate: string | null; periodEndDate: string | null
-  content?: string | null; saveType?: string; updatedAt?: string | null; statusUpdatedAt?: string | null
+  content?: string | null; saveType?: string; updatedAt?: string | null; statusUpdatedAt?: string | null; recordVersion?: number
 }
 type Attachment = { id: number; originalName: string; contentType: string; sizeBytes: number }
 
@@ -37,7 +37,7 @@ const detailAttachments = ref<Attachment[]>([])
 const editingId = ref<number | null>(null)
 const editingSaveType = ref('SUBMITTED')
 const editVersions = ref<VersionItem[]>([])
-const editForm = reactive({ requesterName: '', department: '', title: '', type: '', content: '', systemId: '', targetVersionId: '', periodStartDate: '', periodEndDate: '', status: '' })
+const editForm = reactive({ requesterName: '', department: '', title: '', type: '', content: '', systemId: '', targetVersionId: '', periodStartDate: '', periodEndDate: '', status: '', recordVersion: 0 })
 
 const statusLabel: Record<string, string> = { PENDING_EVALUATION: '待评估', CONFIRMED: '已确认', IN_DEVELOPMENT: '开发中', PAUSED: '暂停', COMPLETED: '已完成', REJECTED: '已拒绝', CLOSED: '已关闭' }
 const typeLabel: Record<string, string> = { BUG: 'BUG', REQUIREMENT: '需求' }
@@ -166,7 +166,7 @@ const openEdit = async (id: number) => {
     Object.assign(editForm, {
       requesterName: detail.requesterName ?? '', department: detail.department ?? '', title: detail.title ?? '', type: detail.type ?? '', content: detail.content ?? '',
       systemId: detail.systemId === null ? '' : String(detail.systemId), targetVersionId: detail.targetVersionId === null ? '' : String(detail.targetVersionId),
-      periodStartDate: detail.periodStartDate ?? '', periodEndDate: detail.periodEndDate ?? '', status: detail.status ?? '',
+      periodStartDate: detail.periodStartDate ?? '', periodEndDate: detail.periodEndDate ?? '', status: detail.status ?? '', recordVersion: detail.recordVersion ?? 0,
     })
     await loadEditVersions()
   } catch {
@@ -184,7 +184,7 @@ const saveEdit = async () => {
   const body = {
     requesterName: editForm.requesterName, department: editForm.department, title: editForm.title, type: editForm.type || null, content: editForm.content,
     systemId: editForm.systemId ? Number(editForm.systemId) : null, targetVersionId: editForm.targetVersionId ? Number(editForm.targetVersionId) : null,
-    periodStartDate: editForm.periodStartDate || null, periodEndDate: editForm.periodEndDate || null, status: editForm.status || null,
+    periodStartDate: editForm.periodStartDate || null, periodEndDate: editForm.periodEndDate || null, status: editForm.status || null, recordVersion: editForm.recordVersion,
   }
   try {
     const path = editingSaveType.value === 'DRAFT' ? `/requirements/${editingId.value}/draft` : `/requirements/${editingId.value}`
@@ -193,8 +193,10 @@ const saveEdit = async () => {
     editingId.value = null
     ElMessage.success(editingSaveType.value === 'DRAFT' ? '草稿已更新' : '需求已更新')
     await query(currentPage.value)
-  } catch {
-    ElMessage.error('保存需求失败，请检查必填项和系统版本')
+  } catch (error: unknown) {
+    const status = (error as { response?: { status?: number } }).response?.status
+    if (status === 409) ElMessage.error('需求已被其他人修改，请刷新后重试')
+    else ElMessage.error('保存需求失败，请检查必填项和系统版本')
   }
 }
 
