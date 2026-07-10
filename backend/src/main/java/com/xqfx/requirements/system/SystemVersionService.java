@@ -26,13 +26,13 @@ class SystemVersionService {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("版本名称不能为空");
         }
-        return SystemVersionResponse.from(versionRepository.save(new SystemVersionEntity(system, name)));
+        return toResponse(versionRepository.save(new SystemVersionEntity(system, name)));
     }
 
     @Transactional(readOnly = true)
     java.util.List<SystemVersionResponse> list(Long systemId) {
         return versionRepository.findBySystemIdAndDeletedFalseOrderByNameAsc(systemId).stream()
-                .map(SystemVersionResponse::from)
+                .map(this::toResponse)
                 .toList();
     }
 
@@ -44,7 +44,7 @@ class SystemVersionService {
         var version = versionRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "版本不存在"));
         version.updateName(name);
-        return SystemVersionResponse.from(version);
+        return toResponse(version);
     }
 
     @Transactional
@@ -52,7 +52,7 @@ class SystemVersionService {
         var version = versionRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "版本不存在"));
         version.updateStatus(status);
-        return SystemVersionResponse.from(version);
+        return toResponse(version);
     }
 
     @Transactional
@@ -63,5 +63,9 @@ class SystemVersionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "版本存在关联需求，无法删除");
         }
         version.delete();
+    }
+
+    private SystemVersionResponse toResponse(SystemVersionEntity version) {
+        return SystemVersionResponse.from(version, requirements.countByTargetVersionIdAndDeletedFalse(version.id()));
     }
 }

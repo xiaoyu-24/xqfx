@@ -14,10 +14,12 @@ import java.time.ZoneId;
 class SystemService {
 
     private final SystemRepository repository;
+    private final SystemVersionRepository versions;
     private final RequirementRepository requirements;
 
-    SystemService(SystemRepository repository, RequirementRepository requirements) {
+    SystemService(SystemRepository repository, SystemVersionRepository versions, RequirementRepository requirements) {
         this.repository = repository;
+        this.versions = versions;
         this.requirements = requirements;
     }
 
@@ -28,13 +30,13 @@ class SystemService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统名称已存在");
         }
         var saved = repository.save(new SystemEntity(profile));
-        return SystemResponse.from(saved);
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     List<SystemResponse> list() {
         return repository.findAllByDeletedFalse().stream()
-                .map(SystemResponse::from)
+                .map(this::toResponse)
                 .toList();
     }
 
@@ -46,14 +48,14 @@ class SystemService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统名称已存在");
         }
         system.update(profile);
-        return SystemResponse.from(system);
+        return toResponse(system);
     }
 
     @Transactional
     SystemResponse updateStatus(Long id, SystemStatus status) {
         var system = findActive(id);
         system.updateStatus(status);
-        return SystemResponse.from(system);
+        return toResponse(system);
     }
 
     @Transactional
@@ -89,5 +91,13 @@ class SystemService {
     private SystemEntity findActive(Long id) {
         return repository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "系统不存在"));
+    }
+
+    private SystemResponse toResponse(SystemEntity system) {
+        return SystemResponse.from(
+                system,
+                versions.countBySystemIdAndDeletedFalse(system.id()),
+                requirements.countBySystemIdAndDeletedFalse(system.id())
+        );
     }
 }

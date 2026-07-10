@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.contains;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -187,5 +188,31 @@ class SystemApiTest {
                                 {"name":"  客户服务系统  ","ownerName":"负责人乙","collaborators":[]}
                                 """))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void listsSystemsWithVersionAndRequirementCounts() throws Exception {
+        var created = mockMvc.perform(post("/api/systems")
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"统计系统","ownerName":"统计负责人","collaborators":["协助人甲"]}
+                                """))
+                .andReturn();
+        var systemId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        mockMvc.perform(post("/api/systems/{systemId}/versions", systemId)
+                        .contentType("application/json")
+                        .content("{\"name\":\"V9.0\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"统计用户","department":"信息部","title":"统计需求","type":"REQUIREMENT","content":"用于验证系统统计字段","systemId":%s}
+                                """.formatted(systemId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/systems"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == %s)].versionCount".formatted(systemId)).value(contains(1)))
+                .andExpect(jsonPath("$[?(@.id == %s)].requirementCount".formatted(systemId)).value(contains(1)));
     }
 }

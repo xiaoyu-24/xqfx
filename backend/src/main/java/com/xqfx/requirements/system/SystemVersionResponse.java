@@ -1,8 +1,8 @@
 package com.xqfx.requirements.system;
 
-record SystemVersionResponse(Long id, Long systemId, String name, SystemVersionStatus status) {
+record SystemVersionResponse(Long id, Long systemId, String name, SystemVersionStatus status, long requirementCount) {
 
-    static SystemVersionResponse from(SystemVersionEntity version) {
-        return new SystemVersionResponse(version.id(), version.system().id(), version.name(), version.status());
+    static SystemVersionResponse from(SystemVersionEntity version, long requirementCount) {
+        return new SystemVersionResponse(version.id(), version.system().id(), version.name(), version.status(), requirementCount);
     }
 }

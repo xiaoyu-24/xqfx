@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.contains;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -124,5 +125,24 @@ class SystemVersionApiTest {
         mockMvc.perform(get("/api/systems/{systemId}/versions", systemId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.id == " + versionId + ")]").isEmpty());
+    }
+
+    @Test
+    void listsVersionsWithRequirementCounts() throws Exception {
+        var created = mockMvc.perform(post("/api/systems/{systemId}/versions", systemId)
+                        .contentType("application/json")
+                        .content("{\"name\":\"V6.0\"}"))
+                .andReturn();
+        var versionId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"王强","department":"技术部","title":"版本统计需求","type":"BUG","content":"验证版本关联需求数","systemId":%d,"targetVersionId":%s}
+                                """.formatted(systemId, versionId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/systems/{systemId}/versions", systemId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + versionId + ")].requirementCount").value(contains(1)));
     }
 }

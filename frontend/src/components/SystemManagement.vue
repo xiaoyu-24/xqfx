@@ -4,13 +4,24 @@ import { ElMessage } from 'element-plus'
 import { api } from '../api'
 
 type SystemStatus = 'ACTIVE' | 'INACTIVE'
-type SystemItem = { id: number; name: string; ownerName: string; collaborators: string[]; status: SystemStatus }
-type VersionItem = { id: number; systemId: number; name: string; status: SystemStatus }
+type SystemItem = {
+  id: number
+  name: string
+  ownerName: string
+  collaborators: string[]
+  status: SystemStatus
+  versionCount: number
+  requirementCount: number
+}
+type VersionItem = { id: number; systemId: number; name: string; status: SystemStatus; requirementCount: number }
 
 const systems = ref<SystemItem[]>([])
 const versions = ref<VersionItem[]>([])
 const loading = ref(false)
-const keyword = ref('')
+const nameFilter = ref('')
+const ownerFilter = ref('')
+const collaboratorFilter = ref('')
+const statusFilter = ref('')
 const selectedSystemId = ref<number | null>(null)
 const systemFormMode = ref<'create' | 'edit' | null>(null)
 const systemForm = reactive({ id: 0, name: '', ownerName: '', collaborators: '' })
@@ -21,10 +32,18 @@ const migrationTargetId = ref<number | null>(null)
 
 const selectedSystem = computed(() => systems.value.find((item) => item.id === selectedSystemId.value) ?? null)
 const filteredSystems = computed(() => {
-  const text = keyword.value.trim().toLowerCase()
-  if (!text) return systems.value
-  return systems.value.filter((system) => [system.name, system.ownerName, ...system.collaborators]
-    .some((value) => value.toLowerCase().includes(text)))
+  const normalizedName = nameFilter.value.trim().toLowerCase()
+  const normalizedOwner = ownerFilter.value.trim().toLowerCase()
+  const normalizedCollaborator = collaboratorFilter.value.trim().toLowerCase()
+
+  return systems.value.filter((system) => {
+    const matchesName = !normalizedName || system.name.toLowerCase().includes(normalizedName)
+    const matchesOwner = !normalizedOwner || system.ownerName.toLowerCase().includes(normalizedOwner)
+    const matchesCollaborator = !normalizedCollaborator || system.collaborators
+      .some((value) => value.toLowerCase().includes(normalizedCollaborator))
+    const matchesStatus = !statusFilter.value || system.status === statusFilter.value
+    return matchesName && matchesOwner && matchesCollaborator && matchesStatus
+  })
 })
 const migrationTargets = computed(() => systems.value.filter((system) => system.id !== migrationSourceId.value && system.status === 'ACTIVE'))
 
@@ -191,7 +210,14 @@ onMounted(loadSystems)
 <template>
   <section class="system-page">
     <div class="system-toolbar">
-      <input v-model="keyword" placeholder="按系统名称、负责人或协助人搜索">
+      <input v-model="nameFilter" data-test="name-filter" placeholder="按系统名称筛选">
+      <input v-model="ownerFilter" data-test="owner-filter" placeholder="按负责人筛选">
+      <input v-model="collaboratorFilter" data-test="collaborator-filter" placeholder="按协助人筛选">
+      <select v-model="statusFilter" data-test="status-filter">
+        <option value="">全部状态</option>
+        <option value="ACTIVE">启用</option>
+        <option value="INACTIVE">停用</option>
+      </select>
       <button class="primary" type="button" @click="showCreateSystem">新增系统</button>
     </div>
 
@@ -205,18 +231,18 @@ onMounted(loadSystems)
 
     <div class="table-wrap">
       <table>
-        <thead><tr><th>系统名称</th><th>负责人</th><th>协助人</th><th>状态</th><th>关联需求</th><th>操作</th></tr></thead>
+        <thead><tr><th>系统名称</th><th>负责人</th><th>协助人</th><th>状态</th><th>版本数</th><th>关联需求数</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="system in filteredSystems" :key="system.id">
-            <td>{{ system.name }}</td><td>{{ system.ownerName }}</td><td>{{ system.collaborators.join('、') || '—' }}</td><td>{{ system.status === 'ACTIVE' ? '启用' : '停用' }}</td><td>—</td>
+            <td>{{ system.name }}</td><td>{{ system.ownerName }}</td><td>{{ system.collaborators.join('、') || '—' }}</td><td>{{ system.status === 'ACTIVE' ? '启用' : '停用' }}</td><td>{{ system.versionCount }}</td><td>{{ system.requirementCount }}</td>
             <td class="row-actions">
               <button type="button" @click="showEditSystem(system)">编辑</button>
-              <button type="button" @click="loadVersions(system.id)">版本管理</button>
+              <button type="button" :data-test="`versions-${system.id}`" @click="loadVersions(system.id)">版本管理</button>
               <button type="button" @click="toggleSystem(system)">{{ system.status === 'ACTIVE' ? '停用' : '启用' }}</button>
               <button type="button" class="danger" @click="deleteSystem(system)">删除</button>
             </td>
           </tr>
-          <tr v-if="!loading && filteredSystems.length === 0"><td colspan="6" class="empty">暂无系统数据，请新增系统</td></tr>
+          <tr v-if="!loading && filteredSystems.length === 0"><td colspan="7" class="empty">暂无系统数据，请新增系统</td></tr>
         </tbody>
       </table>
     </div>
@@ -239,7 +265,7 @@ onMounted(loadSystems)
           <label>版本名称 <input v-model="versionForm.name" required></label>
           <div class="management-actions"><button class="primary" type="submit">保存</button><button class="secondary" type="button" @click="versionFormMode = null">取消</button></div>
         </form>
-        <div class="version-list"><div v-for="version in versions" :key="version.id" class="version-row"><span>{{ version.name }}</span><span>{{ version.status === 'ACTIVE' ? '启用' : '停用' }}</span><span class="row-actions"><button type="button" @click="showEditVersion(version)">编辑</button><button type="button" @click="toggleVersion(version)">{{ version.status === 'ACTIVE' ? '停用' : '启用' }}</button><button class="danger" type="button" @click="deleteVersion(version)">删除</button></span></div><p v-if="versions.length === 0">暂无版本，请新增。</p></div>
+        <div class="version-list"><div v-for="version in versions" :key="version.id" class="version-row"><span>{{ version.name }}</span><span>{{ version.status === 'ACTIVE' ? '启用' : '停用' }}</span><span>{{ version.requirementCount }} 条需求</span><span class="row-actions"><button type="button" @click="showEditVersion(version)">编辑</button><button type="button" @click="toggleVersion(version)">{{ version.status === 'ACTIVE' ? '停用' : '启用' }}</button><button class="danger" type="button" @click="deleteVersion(version)">删除</button></span></div><p v-if="versions.length === 0">暂无版本，请新增。</p></div>
       </template>
     </aside>
   </section>

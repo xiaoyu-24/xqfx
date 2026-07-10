@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SystemManagement from './SystemManagement.vue'
 
@@ -42,5 +42,44 @@ describe('SystemManagement', () => {
       ownerName: '李明',
       collaborators: ['王芳', '赵敏'],
     })
+  })
+
+  it('filters systems by owner and status while showing version and requirement counts', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/systems') {
+        return Promise.resolve({
+          data: [
+            { id: 1, name: '客户系统', ownerName: '李明', collaborators: ['王芳'], status: 'ACTIVE', versionCount: 3, requirementCount: 8 },
+            { id: 2, name: '财务系统', ownerName: '张敏', collaborators: ['赵雷'], status: 'INACTIVE', versionCount: 1, requirementCount: 2 },
+          ],
+        })
+      }
+      if (url === '/systems/1/versions') {
+        return Promise.resolve({
+          data: [{ id: 11, systemId: 1, name: 'V2.0', status: 'ACTIVE', requirementCount: 5 }],
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = mount(SystemManagement)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('版本数')
+    expect(wrapper.text()).toContain('关联需求数')
+    expect(wrapper.text()).toContain('3')
+    expect(wrapper.text()).toContain('8')
+
+    await wrapper.get('[data-test="versions-1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('V2.0')
+    expect(wrapper.text()).toContain('5 条需求')
+
+    await wrapper.get('[data-test="owner-filter"]').setValue('张敏')
+    await wrapper.get('[data-test="status-filter"]').setValue('INACTIVE')
+
+    const tableBody = wrapper.find('tbody').text()
+    expect(tableBody).toContain('财务系统')
+    expect(tableBody).not.toContain('客户系统')
   })
 })
