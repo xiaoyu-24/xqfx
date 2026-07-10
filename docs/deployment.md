@@ -3,7 +3,7 @@
 ## 前置条件
 
 - Java 21。
-- MySQL 8.0，创建数据库 `requirements_platform` 和最小权限账号。
+- MySQL 8.0+，创建数据库 `requirements_platform` 和最小权限账号。
 - Node.js 20+（仅构建前端时需要）。
 
 ## 后端配置
@@ -15,10 +15,15 @@ $env:DB_URL='jdbc:mysql://127.0.0.1:3306/requirements_platform?useUnicode=true&c
 $env:DB_USERNAME='requirements_app'
 $env:DB_PASSWORD='请设置实际密码'
 $env:ATTACHMENTS_ROOT='D:\requirements-platform\uploads'
-java -jar backend\target\requirements-platform-0.1.0-SNAPSHOT.jar
+$env:ATTACHMENTS_MINIMUM_FREE_SPACE_BYTES='1073741824' # 可选：至少保留 1 GiB 空间
+Set-Location backend
+mvn clean package
+java -jar target\requirements-platform-0.1.0-SNAPSHOT.jar
 ```
 
-Flyway 会自动执行 `V1__initial_schema.sql`。应用账号需要数据库、表和索引的创建/变更权限；日常运行时建议改用仅数据读写权限的账号。
+Flyway 会自动执行 V1–V4 迁移。应用账号需要数据库、表和索引的创建/变更权限；日常运行时建议改用仅数据读写权限的账号。
+
+启动完成后访问 `http://127.0.0.1:8080/api/health`，应返回 `{"status":"UP"}`。附件目录应由运行账号拥有读写权限；上传时会保留临时文件所需空间，并按 `ATTACHMENTS_MINIMUM_FREE_SPACE_BYTES` 预留剩余容量。
 
 ## 前端构建
 
@@ -36,8 +41,11 @@ npm run build
 
 ```powershell
 $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
-mysqldump -u requirements_app -p requirements_platform | Out-File "D:\backup\requirements-$stamp.sql" -Encoding utf8
-Copy-Item -Recurse $env:ATTACHMENTS_ROOT "D:\backup\attachments-$stamp"
+$backupRoot='D:\backup'
+New-Item -ItemType Directory -Force "$backupRoot\$stamp" | Out-Null
+mysqldump -u requirements_app -p --single-transaction --routines --events --no-tablespaces --result-file="$backupRoot\$stamp\requirements.sql" requirements_platform
+Copy-Item -Recurse $env:ATTACHMENTS_ROOT "$backupRoot\$stamp\attachments"
+@{ batch=$stamp; createdAt=(Get-Date).ToString('o'); database='requirements_platform'; attachments='attachments' } | ConvertTo-Json | Set-Content "$backupRoot\$stamp\manifest.json" -Encoding utf8
 ```
 
 至少保留最近 7 个批次。
@@ -45,8 +53,9 @@ Copy-Item -Recurse $env:ATTACHMENTS_ROOT "D:\backup\attachments-$stamp"
 ## 恢复与迁移
 
 1. 停止后端，避免写入。
-2. 恢复同一批次的 MySQL 导出与附件目录。
+2. 恢复同一批次的 MySQL 导出与附件目录：`mysql -u requirements_app -p requirements_platform < D:\backup\批次号\requirements.sql`，再将 `attachments` 目录复制到配置的附件根目录。
 3. 在新机器设置 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`、`ATTACHMENTS_ROOT`。
-4. 启动后端，确认 Flyway 校验成功。
-5. 访问前端，抽查系统、需求和附件下载。
+4. 启动后端，确认 Flyway 校验成功及 `/api/health` 返回 UP。
+5. 访问前端，抽查系统、需求、附件下载和图片预览。
 
+详细备份和恢复检查表见 [backup-and-recovery.md](backup-and-recovery.md)。
