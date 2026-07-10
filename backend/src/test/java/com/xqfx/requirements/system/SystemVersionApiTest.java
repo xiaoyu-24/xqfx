@@ -54,6 +54,19 @@ class SystemVersionApiTest {
     }
 
     @Test
+    void rejectsDuplicateVersionNameIgnoringCaseAndWhitespace() throws Exception {
+        mockMvc.perform(post("/api/systems/{systemId}/versions", systemId)
+                        .contentType("application/json")
+                        .content("{\"name\":\"V1.0\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/systems/{systemId}/versions", systemId)
+                        .contentType("application/json")
+                        .content("{\"name\":\"  v1.0  \"}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void listsVersionsForSystem() throws Exception {
         mockMvc.perform(post("/api/systems/{systemId}/versions", systemId)
                 .contentType("application/json")
@@ -125,6 +138,22 @@ class SystemVersionApiTest {
         mockMvc.perform(get("/api/systems/{systemId}/versions", systemId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.id == " + versionId + ")]").isEmpty());
+    }
+
+    @Test
+    void rejectsEditingDeletedVersion() throws Exception {
+        var created = mockMvc.perform(post("/api/systems/{systemId}/versions", systemId)
+                        .contentType("application/json")
+                        .content("{\"name\":\"删除后版本\"}"))
+                .andReturn();
+        var versionId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(delete("/api/system-versions/{id}", versionId))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(put("/api/system-versions/{id}", versionId)
+                        .contentType("application/json")
+                        .content("{\"name\":\"不应更新\"}"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

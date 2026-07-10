@@ -24,6 +24,7 @@ public interface RequirementRepository extends JpaRepository<RequirementEntity, 
             update RequirementEntity requirement
                set requirement.system = :targetSystem,
                    requirement.targetVersion = null,
+                   requirement.recordVersion = requirement.recordVersion + 1,
                    requirement.updatedAt = :updatedAt
              where requirement.system.id = :sourceSystemId
                and requirement.deleted = false

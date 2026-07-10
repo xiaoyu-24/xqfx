@@ -111,12 +111,27 @@ class RequirementApiTest {
                                 """))
                 .andReturn();
         var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
 
         mockMvc.perform(patch("/api/requirements/{id}/status", id)
                         .contentType("application/json")
-                        .content("{" + "\"status\":\"IN_DEVELOPMENT\"}"))
+                        .content("{" + "\"status\":\"IN_DEVELOPMENT\",\"recordVersion\":" + recordVersion + "}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("IN_DEVELOPMENT"));
+    }
+
+    @Test
+    void rejectsStatusUpdateWithoutRecordVersion() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("{\"requesterName\":\"状态用户\",\"department\":\"研发部\",\"title\":\"状态锁定\",\"type\":\"BUG\",\"content\":\"必须携带版本号\"}"))
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(patch("/api/requirements/{id}/status", id)
+                        .contentType("application/json")
+                        .content("{\"status\":\"IN_DEVELOPMENT\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -311,9 +326,10 @@ class RequirementApiTest {
                                 """))
                 .andReturn();
         var inactiveSystemId = com.jayway.jsonpath.JsonPath.read(createdSystem.getResponse().getContentAsString(), "$.id").toString();
+        var inactiveSystemRecordVersion = com.jayway.jsonpath.JsonPath.read(createdSystem.getResponse().getContentAsString(), "$.recordVersion").toString();
         mockMvc.perform(patch("/api/systems/{id}/status", inactiveSystemId)
                         .contentType("application/json")
-                        .content("{\"status\":\"INACTIVE\"}"))
+                        .content("{\"status\":\"INACTIVE\",\"recordVersion\":" + inactiveSystemRecordVersion + "}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/requirements")
@@ -348,9 +364,10 @@ class RequirementApiTest {
                                 """))
                 .andReturn();
         var inactiveSystemId = com.jayway.jsonpath.JsonPath.read(inactiveSystem.getResponse().getContentAsString(), "$.id").toString();
+        var inactiveSystemRecordVersion = com.jayway.jsonpath.JsonPath.read(inactiveSystem.getResponse().getContentAsString(), "$.recordVersion").toString();
         mockMvc.perform(patch("/api/systems/{id}/status", inactiveSystemId)
                         .contentType("application/json")
-                        .content("{" + "\"status\":\"INACTIVE\"}"))
+                        .content("{\"status\":\"INACTIVE\",\"recordVersion\":" + inactiveSystemRecordVersion + "}"))
                 .andExpect(status().isOk());
         var requirement = mockMvc.perform(post("/api/requirements")
                         .contentType("application/json")
@@ -423,9 +440,10 @@ class RequirementApiTest {
                                 """.formatted(systemId, versionId)))
                 .andReturn();
         var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
         mockMvc.perform(patch("/api/requirements/{id}/status", requirementId)
                         .contentType("application/json")
-                        .content("{\"status\":\"CONFIRMED\"}"))
+                        .content("{\"status\":\"CONFIRMED\",\"recordVersion\":" + recordVersion + "}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/requirements")
                         .contentType("application/json")

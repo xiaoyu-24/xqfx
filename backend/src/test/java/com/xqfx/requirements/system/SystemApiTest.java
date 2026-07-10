@@ -114,12 +114,27 @@ class SystemApiTest {
                                 """))
                 .andReturn();
         var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
+
+        mockMvc.perform(patch("/api/systems/{id}/status", id)
+                        .contentType("application/json")
+                        .content("{\"status\":\"INACTIVE\",\"recordVersion\":" + recordVersion + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INACTIVE"));
+    }
+
+    @Test
+    void rejectsChangingSystemStatusWithoutRecordVersion() throws Exception {
+        var created = mockMvc.perform(post("/api/systems")
+                        .contentType("application/json")
+                        .content("{\"name\":\"状态锁定系统\",\"ownerName\":\"负责人\",\"collaborators\":[]}"))
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
 
         mockMvc.perform(patch("/api/systems/{id}/status", id)
                         .contentType("application/json")
                         .content("{\"status\":\"INACTIVE\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("INACTIVE"));
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -180,7 +195,8 @@ class SystemApiTest {
         mockMvc.perform(get("/api/requirements/{id}", requirementId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.systemId").value(Long.parseLong(targetId)))
-                .andExpect(jsonPath("$.targetVersionId").isEmpty());
+                .andExpect(jsonPath("$.targetVersionId").isEmpty())
+                .andExpect(jsonPath("$.recordVersion").value(1));
         mockMvc.perform(delete("/api/systems/{id}", sourceId))
                 .andExpect(status().isNoContent());
     }

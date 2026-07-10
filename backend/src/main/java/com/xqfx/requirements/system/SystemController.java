@@ -44,7 +44,7 @@ class SystemController {
 
     @PatchMapping("/{id}/status")
     SystemResponse updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
-        return service.updateStatus(id, request.status());
+        return service.updateStatus(id, request.status(), request.recordVersion());
     }
 
     @PostMapping("/{id}/migrate")
@@ -79,7 +79,7 @@ class SystemController {
         }
     }
 
-    record UpdateStatusRequest(@jakarta.validation.constraints.NotNull SystemStatus status) {
+    record UpdateStatusRequest(@jakarta.validation.constraints.NotNull SystemStatus status, @jakarta.validation.constraints.NotNull Long recordVersion) {
     }
 
     record MigrateSystemRequest(Long targetSystemId) {

@@ -53,8 +53,9 @@ class SystemService {
     }
 
     @Transactional
-    SystemResponse updateStatus(Long id, SystemStatus status) {
+    SystemResponse updateStatus(Long id, SystemStatus status, Long recordVersion) {
         var system = findActive(id);
+        assertRecordVersion(system.recordVersion(), recordVersion, "系统已被其他人修改，请刷新后重试");
         system.updateStatus(status);
         return toResponse(system);
     }

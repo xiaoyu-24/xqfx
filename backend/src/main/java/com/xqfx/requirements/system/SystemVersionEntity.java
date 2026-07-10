@@ -27,6 +27,9 @@ public class SystemVersionEntity {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @Column(length = 100)
+    private String activeNameKey;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private SystemVersionStatus status = SystemVersionStatus.ACTIVE;
@@ -42,6 +45,7 @@ public class SystemVersionEntity {
     public SystemVersionEntity(SystemEntity system, String name) {
         this.system = system;
         this.name = name.trim();
+        this.activeNameKey = normalizedName(name);
     }
 
     public Long id() { return id; }
@@ -50,7 +54,9 @@ public class SystemVersionEntity {
     SystemVersionStatus status() { return status; }
     public boolean isActive() { return status == SystemVersionStatus.ACTIVE; }
 
-    void updateName(String name) { this.name = name.trim(); }
+    void updateName(String name) { this.name = name.trim(); this.activeNameKey = normalizedName(name); }
     void updateStatus(SystemVersionStatus status) { this.status = status; }
-    void delete() { this.deleted = true; this.deletedAt = LocalDateTime.now(); }
+    void delete() { this.deleted = true; this.deletedAt = LocalDateTime.now(); this.activeNameKey = null; }
+
+    static String normalizedName(String name) { return name.trim().toLowerCase(java.util.Locale.ROOT); }
 }
