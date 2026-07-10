@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,5 +58,18 @@ class RequirementApiTest {
                 .andExpect(jsonPath("$.targetVersionId").value(versionId))
                 .andExpect(jsonPath("$.periodStartDate").value("2026-07-10"))
                 .andExpect(jsonPath("$.periodEndDate").value("2026-07-20"));
+    }
+
+    @Test
+    void filtersRequirementsByType() throws Exception {
+        mockMvc.perform(post("/api/requirements")
+                .contentType("application/json")
+                .content("""
+                        {"requesterName":"王芳","department":"财务部","title":"报销错误","type":"BUG","content":"保存失败"}
+                        """));
+
+        mockMvc.perform(get("/api/requirements").param("type", "BUG"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("BUG"));
     }
 }

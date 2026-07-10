@@ -17,4 +17,5 @@ class RequirementService {
    var saved=requirements.save(new RequirementEntity(requesterName,department,title,type,content,system,version,RequirementPeriod.of(start,end)));
    return RequirementResponse.from(saved);
  }
+ @Transactional(readOnly=true) java.util.List<RequirementResponse> list(RequirementType type){return (type==null?requirements.findAll():requirements.findByType(type)).stream().map(RequirementResponse::from).toList();}
 }
