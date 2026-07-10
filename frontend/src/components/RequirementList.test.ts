@@ -50,6 +50,19 @@ describe('RequirementList', () => {
     expect(wrapper.get('[data-test="attachment-download-11"]').attributes('href')).toBe('/api/attachments/11')
   })
 
+  it('displays the target version name returned with a requirement', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 10, title: '版本展示', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: 3, targetVersionName: 'V2.0', periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = mount(RequirementList)
+
+    await wrapper.get('[data-test="query"]').trigger('click')
+
+    expect(wrapper.text()).toContain('V2.0')
+    expect(wrapper.text()).not.toContain('版本 #3')
+  })
+
   it('soft deletes a requirement after confirmation', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     get.mockImplementation((url: string) => url === '/requirements/page'

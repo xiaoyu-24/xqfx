@@ -46,7 +46,7 @@ public class SystemVersionEntity {
 
     public Long id() { return id; }
     public SystemEntity system() { return system; }
-    String name() { return name; }
+    public String name() { return name; }
     SystemVersionStatus status() { return status; }
     public boolean isActive() { return status == SystemVersionStatus.ACTIVE; }
 
