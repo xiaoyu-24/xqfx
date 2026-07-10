@@ -46,3 +46,13 @@ th { background: #f8fafc; font-weight: 600; }
 .version-panel { background: #f8fafc; border-radius: 6px; margin-top: 24px; padding: 18px; }
 .version-panel h2 { font-size: 16px; margin: 0 0 8px; }
 .version-panel p { font-size: 14px; margin: 0 0 14px; }
+.management-form { display: grid; gap: 12px; margin: 0 0 18px; max-width: 720px; padding: 18px; border: 1px solid #bfdbfe; border-radius: 6px; background: #eff6ff; color: #334155; }
+.management-form label { display: grid; gap: 6px; font-size: 14px; }
+.management-form input, .management-form select { border: 1px solid #cbd5e1; border-radius: 5px; padding: 8px; }
+.management-actions, .row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.management-actions button, .row-actions button { border: 0; border-radius: 4px; cursor: pointer; padding: 5px 9px; }
+.row-actions button { background: #e2e8f0; color: #334155; }
+.row-actions .danger { background: #fee2e2; color: #b91c1c; }
+.migration-form { background: #fff7ed; border-color: #fed7aa; }
+.version-list { display: grid; gap: 8px; margin-top: 14px; }
+.version-row { align-items: center; border-top: 1px solid #e2e8f0; display: grid; gap: 10px; grid-template-columns: minmax(160px, 1fr) 70px auto; padding-top: 8px; }
