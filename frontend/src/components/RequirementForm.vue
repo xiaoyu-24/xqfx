@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
 
@@ -22,6 +22,8 @@ const form = reactive({
 })
 
 const submitting = ref(false)
+const systems = ref<Array<{ id: number; name: string; status: string }>>([])
+onMounted(async () => { try { systems.value = (await api.get('/systems')).data.filter((system: { status: string }) => system.status === 'ACTIVE') } catch { ElMessage.warning('系统列表加载失败，可选择新系统或稍后重试') } })
 const requestBody = () => ({
   requesterName: form.requesterName, department: form.department, title: form.title, type: form.type,
   content: form.content, periodStartDate: form.periodStartDate || null, periodEndDate: form.periodEndDate || null,
@@ -68,7 +70,7 @@ const submit = async (draft: boolean) => {
         </select>
       </label>
       <template v-if="systemMode === 'existing'">
-        <label>已有系统 <select v-model="form.systemId"><option value="">请选择系统</option></select></label>
+        <label>已有系统 <select v-model="form.systemId"><option value="">请选择系统</option><option v-for="system in systems" :key="system.id" :value="system.id">{{ system.name }}</option></select></label>
         <label>目标版本 <select v-model="form.targetVersionId"><option value="">请选择版本（可选）</option></select></label>
       </template>
       <template v-else-if="systemMode === 'new'">
