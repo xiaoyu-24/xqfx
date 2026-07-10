@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
 
 type SystemMode = 'existing' | 'new' | 'none'
+
+const emit = defineEmits<{
+  back: []
+  'dirty-change': [value: boolean]
+  submitted: []
+}>()
 
 const systemMode = ref<SystemMode>('existing')
 const form = reactive({
@@ -27,7 +33,52 @@ const versions = ref<Array<{ id: number; name: string; status: string }>>([])
 const selectedFiles = ref<File[]>([])
 const uploadedAttachments = ref<Array<{ id: number; originalName: string }>>([])
 const uploadProgress = ref(0)
-onMounted(async () => { try { systems.value = (await api.get('/systems')).data.filter((system: { status: string }) => system.status === 'ACTIVE') } catch { ElMessage.warning('系统列表加载失败，可选择新系统或稍后重试') } })
+
+const createSnapshot = () => JSON.stringify({
+  systemMode: systemMode.value,
+  form: { ...form },
+  selectedFiles: selectedFiles.value.map((file) => ({
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    lastModified: file.lastModified,
+  })),
+})
+
+const lastSavedSnapshot = ref(createSnapshot())
+const isDirty = computed(() => createSnapshot() !== lastSavedSnapshot.value)
+const periodError = computed(() => {
+  if ((form.periodStartDate && !form.periodEndDate) || (!form.periodStartDate && form.periodEndDate)) {
+    return '开始日期和结束日期必须同时填写'
+  }
+  if (form.periodStartDate && form.periodEndDate && form.periodEndDate < form.periodStartDate) {
+    return '结束日期不能早于开始日期'
+  }
+  return ''
+})
+
+const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
+  if (!isDirty.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+watch(isDirty, (value) => emit('dirty-change', value), { immediate: true })
+
+onMounted(async () => {
+  window.addEventListener('beforeunload', beforeUnloadHandler)
+  try {
+    systems.value = (await api.get('/systems')).data.filter((system: { status: string }) => system.status === 'ACTIVE')
+  } catch {
+    ElMessage.warning('系统列表加载失败，可选择新系统或稍后重试')
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', beforeUnloadHandler)
+  emit('dirty-change', false)
+})
+
 const loadVersions = async () => {
   form.targetVersionId = ''
   versions.value = []
@@ -72,6 +123,10 @@ const uploadFiles = async (requirementId: number) => {
   selectedFiles.value = []
 }
 const submit = async (draft: boolean) => {
+  if (periodError.value) {
+    ElMessage.warning(periodError.value)
+    return
+  }
   submitting.value = true
   try {
     const body = requestBody()
@@ -79,15 +134,25 @@ const submit = async (draft: boolean) => {
     if (selectedFiles.value.length > 0 && data.id) {
       try { await uploadFiles(data.id) } catch { ElMessage.warning('需求已保存，但部分附件上传失败，可稍后在详情页重试') }
     }
+    lastSavedSnapshot.value = createSnapshot()
     ElMessage.success(draft ? '暂存成功' : '保存成功')
+    if (!draft) emit('submitted')
   } catch {
     ElMessage.error('保存失败，请检查填写内容后重试')
   } finally { submitting.value = false }
+}
+
+const goBack = () => {
+  if (isDirty.value && !window.confirm('当前内容尚未保存，确定返回吗？')) return
+  emit('back')
 }
 </script>
 
 <template>
   <form class="requirement-form" @submit.prevent="submit(false)">
+    <div class="form-toolbar">
+      <button class="secondary" type="button" data-test="back" :disabled="submitting" @click="goBack">返回</button>
+    </div>
     <div class="form-grid">
       <label>姓名 <input v-model="form.requesterName" required placeholder="请输入姓名"></label>
       <label>部门 <input v-model="form.department" required placeholder="请输入部门"></label>
@@ -100,10 +165,11 @@ const submit = async (draft: boolean) => {
       <div>
         <span class="field-label">需求时间周期（上海时间）</span>
         <div class="date-range">
-          <input v-model="form.periodStartDate" type="date" aria-label="开始日期">
+          <input v-model="form.periodStartDate" type="date" aria-label="开始日期" :aria-invalid="Boolean(periodError)">
           <span>至</span>
-          <input v-model="form.periodEndDate" type="date" aria-label="结束日期">
+          <input v-model="form.periodEndDate" type="date" aria-label="结束日期" :aria-invalid="Boolean(periodError)">
         </div>
+        <p v-if="periodError" class="field-error">{{ periodError }}</p>
       </div>
       <label class="full-width">所属系统
         <select v-model="systemMode" data-test="system-mode">
@@ -117,8 +183,8 @@ const submit = async (draft: boolean) => {
         <label>目标版本 <select v-model="form.targetVersionId" :disabled="!form.systemId"><option value="">请选择版本（可选）</option><option v-for="version in versions" :key="version.id" :value="version.id">{{ version.name }}</option></select></label>
       </template>
       <template v-else-if="systemMode === 'new'">
-        <label>新系统名称 <input v-model="form.newSystemName" placeholder="请输入系统名称"></label>
-        <label>新系统负责人 <input v-model="form.newSystemOwnerName" placeholder="请输入负责人姓名"></label>
+        <label>新系统名称 <input v-model="form.newSystemName" :required="systemMode === 'new'" placeholder="请输入系统名称"></label>
+        <label>新系统负责人 <input v-model="form.newSystemOwnerName" :required="systemMode === 'new'" placeholder="请输入负责人姓名"></label>
         <label class="full-width">新系统协助人 <input v-model="form.newSystemCollaborators" placeholder="多人请用逗号分隔"></label>
       </template>
       <label class="full-width">需求内容

@@ -13,7 +13,28 @@ const pages: Array<{ key: PageKey; label: string; description: string }> = [
 ]
 
 const activePage = ref<PageKey>('create')
+const lastNonCreatePage = ref<PageKey>('list')
+const createFormDirty = ref(false)
 const active = computed(() => pages.find((page) => page.key === activePage.value)!)
+
+const navigateTo = (page: PageKey, skipGuard = false) => {
+  if (page === activePage.value) return
+  if (!skipGuard && activePage.value === 'create' && createFormDirty.value && page !== 'create') {
+    if (!window.confirm('当前内容尚未保存，确定离开填写页吗？')) return
+  }
+  if (page !== 'create') lastNonCreatePage.value = page
+  activePage.value = page
+}
+
+const handleCreateBack = () => {
+  createFormDirty.value = false
+  navigateTo(lastNonCreatePage.value, true)
+}
+
+const handleCreateSubmitted = () => {
+  createFormDirty.value = false
+  navigateTo('list', true)
+}
 </script>
 
 <template>
@@ -27,7 +48,7 @@ const active = computed(() => pages.find((page) => page.key === activePage.value
           class="nav-item"
           :class="{ active: activePage === page.key }"
           type="button"
-          @click="activePage = page.key"
+          @click="navigateTo(page.key)"
         >
           {{ page.label }}
         </button>
@@ -38,7 +59,12 @@ const active = computed(() => pages.find((page) => page.key === activePage.value
         <h1>{{ active.label }}</h1>
       </header>
       <section class="page-placeholder">
-        <RequirementForm v-if="activePage === 'create'" />
+        <RequirementForm
+          v-if="activePage === 'create'"
+          @back="handleCreateBack"
+          @dirty-change="createFormDirty = $event"
+          @submitted="handleCreateSubmitted"
+        />
         <RequirementList v-else-if="activePage === 'list'" />
         <SystemManagement v-else />
       </section>

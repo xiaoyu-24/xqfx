@@ -13,6 +13,8 @@ button { font: inherit; }
 .page-header h1 { font-size: 24px; margin: 0 0 16px; }
 .page-placeholder { min-height: 240px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #64748b; padding: 24px; }
 .requirement-form { color: #334155; }
+.form-toolbar { display: flex; justify-content: flex-start; margin-bottom: 16px; }
+.form-toolbar .secondary { border: 0; border-radius: 5px; cursor: pointer; padding: 9px 18px; background: #e2e8f0; color: #334155; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; }
 .form-grid label, fieldset { display: grid; gap: 7px; border: 0; margin: 0; padding: 0; }
 .form-grid input, .form-grid select, .form-grid textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 5px; color: #1e293b; padding: 9px 10px; }
@@ -23,6 +25,7 @@ button { font: inherit; }
 .full-width { grid-column: 1 / -1; }
 .date-range { display: flex; align-items: center; gap: 8px; }
 .date-range input { min-width: 0; }
+.field-error { color: #b91c1c; font-size: 13px; margin: 8px 0 0; }
 .attachment-note { border-radius: 5px; background: #f8fafc; padding: 10px; font-size: 13px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; }
 .form-actions button { border: 0; border-radius: 5px; cursor: pointer; padding: 9px 18px; }

@@ -66,4 +66,30 @@ describe('RequirementForm', () => {
 
     expect(post).toHaveBeenNthCalledWith(2, '/requirements/15/attachments', expect.any(FormData), expect.objectContaining({ onUploadProgress: expect.any(Function) }))
   })
+
+  it('shows an immediate error and blocks submit when only one period date is filled', async () => {
+    const wrapper = mount(RequirementForm)
+    await wrapper.find('input[placeholder="请输入姓名"]').setValue('林琳')
+    await wrapper.find('input[placeholder="请输入部门"]').setValue('研发部')
+    await wrapper.find('input[placeholder="请简要概括需求"]').setValue('时间周期校验')
+    await wrapper.find('textarea').setValue('开始日期和结束日期必须同时填写')
+    await wrapper.find('input[aria-label="开始日期"]').setValue('2026-07-10')
+
+    expect(wrapper.text()).toContain('开始日期和结束日期必须同时填写')
+
+    await wrapper.find('form').trigger('submit.prevent')
+
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('asks for confirmation before returning when the form is dirty', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(RequirementForm)
+    await wrapper.find('input[placeholder="请输入姓名"]').setValue('林琳')
+
+    await wrapper.get('[data-test="back"]').trigger('click')
+
+    expect(confirm).toHaveBeenCalledWith('当前内容尚未保存，确定返回吗？')
+    expect(wrapper.emitted('back')).toHaveLength(1)
+  })
 })
