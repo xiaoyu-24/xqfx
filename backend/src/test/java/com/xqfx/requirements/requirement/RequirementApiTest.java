@@ -395,4 +395,20 @@ class RequirementApiTest {
                 .andExpect(jsonPath("$.originalName").value("示例.png"))
                 .andExpect(jsonPath("$.contentType").value("image/png"));
     }
+
+    @Test
+    void downloadsUploadedAttachment() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"下载用户","department":"研发部","title":"下载附件","type":"BUG","content":"验证附件下载"}
+                """)).andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var file = new org.springframework.mock.web.MockMultipartFile("file", "说明.pdf", "application/pdf", new byte[] {4, 5, 6});
+        var uploaded = mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId).file(file)).andReturn();
+        var attachmentId = com.jayway.jsonpath.JsonPath.read(uploaded.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(get("/api/attachments/{id}", attachmentId))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Content-Type", "application/pdf"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().bytes(new byte[] {4, 5, 6}));
+    }
 }

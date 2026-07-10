@@ -16,5 +16,5 @@ class AttachmentEntity {
     @Column(nullable = false) private LocalDateTime createdAt;
     protected AttachmentEntity() { }
     AttachmentEntity(RequirementEntity requirement, String originalName, String storedName, String relativePath, String contentType, long sizeBytes) { this.requirement=requirement;this.originalName=originalName;this.storedName=storedName;this.relativePath=relativePath;this.contentType=contentType;this.sizeBytes=sizeBytes;this.createdAt=LocalDateTime.now(); }
-    Long id(){return id;} String originalName(){return originalName;} String contentType(){return contentType;} long sizeBytes(){return sizeBytes;}
+    Long id(){return id;} String originalName(){return originalName;} String storedName(){return storedName;} String contentType(){return contentType;} long sizeBytes(){return sizeBytes;}
 }
