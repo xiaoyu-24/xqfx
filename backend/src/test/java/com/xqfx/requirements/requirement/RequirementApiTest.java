@@ -325,4 +325,21 @@ class RequirementApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("结束日期不能早于开始日期"));
     }
+
+    @Test
+    void pagesRequirements() throws Exception {
+        mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"分页用户","department":"信息部","title":"分页需求","type":"REQUIREMENT","content":"用于验证分页接口的需求记录"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/requirements/page").param("page", "0").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.totalElements").isNumber())
+                .andExpect(jsonPath("$.totalPages").isNumber());
+    }
 }
