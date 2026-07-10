@@ -13,7 +13,7 @@ import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "system_versions")
-class SystemVersionEntity {
+public class SystemVersionEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,13 +33,13 @@ class SystemVersionEntity {
     protected SystemVersionEntity() {
     }
 
-    SystemVersionEntity(SystemEntity system, String name) {
+    public SystemVersionEntity(SystemEntity system, String name) {
         this.system = system;
         this.name = name.trim();
     }
 
-    Long id() { return id; }
-    SystemEntity system() { return system; }
+    public Long id() { return id; }
+    public SystemEntity system() { return system; }
     String name() { return name; }
     SystemVersionStatus status() { return status; }
 }

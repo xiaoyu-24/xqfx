@@ -15,7 +15,7 @@ import java.util.List;
 
 @Entity
 @Table(name = "systems")
-class SystemEntity {
+public class SystemEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,13 +35,13 @@ class SystemEntity {
     protected SystemEntity() {
     }
 
-    SystemEntity(SystemProfile profile) {
+    public SystemEntity(SystemProfile profile) {
         this.name = profile.name();
         this.ownerName = profile.ownerName();
         this.collaborators = new ArrayList<>(profile.collaborators());
     }
 
-    Long id() {
+    public Long id() {
         return id;
     }
 
