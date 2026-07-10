@@ -496,7 +496,8 @@ class RequirementApiTest {
         mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId).file(file))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.originalName").value("示例.png"))
-                .andExpect(jsonPath("$.contentType").value("image/png"));
+                .andExpect(jsonPath("$.contentType").value("image/png"))
+                .andExpect(jsonPath("$.checksum").value("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"));
     }
 
     @Test
