@@ -314,4 +314,15 @@ class RequirementApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.id == " + newSystemId + " && @.name == '新客户系统' && @.ownerName == '孙明')]").isNotEmpty());
     }
+
+    @Test
+    void returnsBadRequestWhenPeriodEndPrecedesStart() throws Exception {
+        mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"杨晨","department":"销售部","title":"无效日期范围","type":"BUG","content":"需求周期结束日期不能早于开始日期","periodStartDate":"2026-07-20","periodEndDate":"2026-07-10"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("结束日期不能早于开始日期"));
+    }
 }
