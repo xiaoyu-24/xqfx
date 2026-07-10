@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "system_versions")
@@ -30,6 +31,11 @@ public class SystemVersionEntity {
     @Column(nullable = false, length = 20)
     private SystemVersionStatus status = SystemVersionStatus.ACTIVE;
 
+    @Column(nullable = false)
+    private boolean deleted = false;
+
+    private LocalDateTime deletedAt;
+
     protected SystemVersionEntity() {
     }
 
@@ -42,4 +48,9 @@ public class SystemVersionEntity {
     public SystemEntity system() { return system; }
     String name() { return name; }
     SystemVersionStatus status() { return status; }
+    public boolean isActive() { return status == SystemVersionStatus.ACTIVE; }
+
+    void updateName(String name) { this.name = name.trim(); }
+    void updateStatus(SystemVersionStatus status) { this.status = status; }
+    void delete() { this.deleted = true; this.deletedAt = LocalDateTime.now(); }
 }

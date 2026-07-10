@@ -6,5 +6,5 @@ import java.util.List;
 
 public interface SystemVersionRepository extends JpaRepository<SystemVersionEntity, Long> {
 
-    List<SystemVersionEntity> findBySystemIdOrderByNameAsc(Long systemId);
+    List<SystemVersionEntity> findBySystemIdAndDeletedFalseOrderByNameAsc(Long systemId);
 }

@@ -43,7 +43,7 @@ class RequirementApiTest {
 
     @BeforeEach
     void createSystemAndVersion() {
-        var system = systemRepository.save(new SystemEntity(SystemProfile.create("客户管理系统", "李明", List.of())));
+        var system = systemRepository.save(new SystemEntity(SystemProfile.create("客户管理系统-" + java.util.UUID.randomUUID(), "李明", List.of())));
         systemId = system.id();
         versionId = versionRepository.save(new SystemVersionEntity(system, "V1.0")).id();
     }
@@ -277,6 +277,21 @@ class RequirementApiTest {
                         .content("""
                                 {"requesterName":"马超","department":"支持部","title":"停用系统需求","type":"BUG","content":"停用系统不能接收新的正式需求","systemId":%s}
                                 """.formatted(inactiveSystemId)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void rejectsNewRequirementForInactiveTargetVersion() throws Exception {
+        mockMvc.perform(patch("/api/system-versions/{id}/status", versionId)
+                        .contentType("application/json")
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"黄伟","department":"运维部","title":"停用版本需求","type":"REQUIREMENT","content":"停用版本不能作为新的目标版本","systemId":%d,"targetVersionId":%d}
+                                """.formatted(systemId, versionId)))
                 .andExpect(status().isConflict());
     }
 }

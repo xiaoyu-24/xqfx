@@ -14,6 +14,7 @@ class RequirementService {
    var system=systemId==null?null:systems.findById(systemId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"系统不存在"));
    if(system!=null&&!system.isActive()) throw new ResponseStatusException(HttpStatus.CONFLICT,"系统已停用，不能新建需求");
    var version=targetVersionId==null?null:versions.findById(targetVersionId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"版本不存在"));
+   if(version!=null&&!version.isActive()) throw new ResponseStatusException(HttpStatus.CONFLICT,"版本已停用，不能作为目标版本");
    if(version!=null&&(system==null||!version.system().id().equals(system.id()))) throw new IllegalArgumentException("目标版本不属于所属系统");
    var saved=requirements.save(new RequirementEntity(requesterName,department,title,type,content,system,version,RequirementPeriod.of(start,end)));
    return RequirementResponse.from(saved);
