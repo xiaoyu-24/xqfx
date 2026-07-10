@@ -25,4 +25,11 @@ class SystemVersionService {
         }
         return SystemVersionResponse.from(versionRepository.save(new SystemVersionEntity(system, name)));
     }
+
+    @Transactional(readOnly = true)
+    java.util.List<SystemVersionResponse> list(Long systemId) {
+        return versionRepository.findBySystemIdOrderByNameAsc(systemId).stream()
+                .map(SystemVersionResponse::from)
+                .toList();
+    }
 }

@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,6 +25,11 @@ class SystemVersionController {
     @ResponseStatus(HttpStatus.CREATED)
     SystemVersionResponse create(@PathVariable Long systemId, @Valid @RequestBody CreateVersionRequest request) {
         return service.create(systemId, request.name());
+    }
+
+    @GetMapping
+    java.util.List<SystemVersionResponse> list(@PathVariable Long systemId) {
+        return service.list(systemId);
     }
 
     record CreateVersionRequest(@NotBlank String name) {
