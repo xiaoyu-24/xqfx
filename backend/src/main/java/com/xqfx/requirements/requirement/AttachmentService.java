@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Set;
@@ -40,7 +41,11 @@ class AttachmentService {
             var storedName=UUID.randomUUID()+"."+extension;
             target=root.resolve(storedName).normalize();
             if(!target.startsWith(root)) throw new IllegalArgumentException("附件路径无效");
-            Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException exception) {
+                Files.move(temporary,target);
+            }
             temporary=null;
             var attachment = attachments.save(new AttachmentEntity(requirement,originalName,storedName,storedName,contentType,file.getSize(),checksum));
             saved = true;
@@ -56,7 +61,7 @@ class AttachmentService {
     }
     @Transactional(readOnly=true) java.util.List<AttachmentResponse> list(Long requirementId) { requirements.findByIdAndDeletedFalse(requirementId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在")); return attachments.findByRequirementIdAndDeletedFalseOrderByIdAsc(requirementId).stream().map(AttachmentResponse::from).toList(); }
     AttachmentFile download(Long id) { var attachment=findActive(id); var file=root.resolve(attachment.storedName()).normalize(); if(!file.startsWith(root)||!Files.isRegularFile(file)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"附件文件不存在"); return new AttachmentFile(new FileSystemResource(file),attachment.originalName(),attachment.contentType()); }
-    @Transactional void delete(Long id) { findActive(id).delete(); }
+    @Transactional void delete(Long id) { var attachment=findActive(id); deleteQuietly(root.resolve(attachment.storedName()).normalize()); attachment.delete(); }
     private AttachmentEntity findActive(Long id) { return attachments.findByIdAndDeletedFalse(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"附件不存在")); }
     record AttachmentFile(Resource resource,String originalName,String contentType) { }
     private static String extension(String name) { var index=name.lastIndexOf('.'); return index<0?"":name.substring(index+1).toLowerCase(); }

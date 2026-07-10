@@ -9,12 +9,15 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ContentDisposition;
+
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/attachments")
 class AttachmentController {
     private final AttachmentService attachments;
     AttachmentController(AttachmentService attachments) { this.attachments=attachments; }
-    @GetMapping("/{id}") ResponseEntity<org.springframework.core.io.Resource> download(@PathVariable Long id) { var file=attachments.download(id); return ResponseEntity.ok().contentType(MediaType.parseMediaType(file.contentType())).header("Content-Disposition", "attachment; filename=\"" + file.originalName() + "\"").body(file.resource()); }
+    @GetMapping("/{id}") ResponseEntity<org.springframework.core.io.Resource> download(@PathVariable Long id) { var file=attachments.download(id); return ResponseEntity.ok().contentType(MediaType.parseMediaType(file.contentType())).header("Content-Disposition", ContentDisposition.attachment().filename(file.originalName(), StandardCharsets.UTF_8).build().toString()).body(file.resource()); }
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id) { attachments.delete(id); }
 }

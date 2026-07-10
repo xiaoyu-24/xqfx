@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 class AttachmentServiceTest {
 
@@ -62,5 +63,21 @@ class AttachmentServiceTest {
         try (Stream<Path> files = Files.list(attachmentsRoot)) {
             assertTrue(files.findAny().isEmpty());
         }
+    }
+
+    @Test
+    void removesStoredFileWhenAttachmentIsDeleted() throws Exception {
+        var requirements = mock(RequirementRepository.class);
+        var attachments = mock(AttachmentRepository.class);
+        var attachment = mock(AttachmentEntity.class);
+        when(attachments.findByIdAndDeletedFalse(5L)).thenReturn(java.util.Optional.of(attachment));
+        when(attachment.storedName()).thenReturn("delete-me.pdf");
+        Files.writeString(attachmentsRoot.resolve("delete-me.pdf"), "attachment");
+        var service = new AttachmentService(requirements, attachments, attachmentsRoot.toString(), 0);
+
+        service.delete(5L);
+
+        assertTrue(Files.notExists(attachmentsRoot.resolve("delete-me.pdf")));
+        verify(attachment).delete();
     }
 }
