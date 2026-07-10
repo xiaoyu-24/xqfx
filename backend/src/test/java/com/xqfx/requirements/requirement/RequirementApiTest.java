@@ -407,6 +407,21 @@ class RequirementApiTest {
     }
 
     @Test
+    void filtersRequirementsWithoutAssignedSystem() throws Exception {
+        mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"无系统用户","department":"研发部","title":"暂无系统需求","type":"BUG","content":"用于验证暂无系统筛选"}
+                """)).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"有系统用户","department":"研发部","title":"已有系统需求","type":"BUG","content":"不应命中暂无系统筛选","systemId":%d}
+                """.formatted(systemId))).andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/requirements/page").param("page", "0").param("size", "100").param("unassignedSystem", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.title == '暂无系统需求')]").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.title == '已有系统需求')]").isEmpty());
+    }
+
+    @Test
     void uploadsSupportedAttachmentForRequirement() throws Exception {
         var created = mockMvc.perform(post("/api/requirements")
                         .contentType("application/json")

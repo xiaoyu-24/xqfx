@@ -1,6 +1,9 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
+
+const { get } = vi.hoisted(() => ({ get: vi.fn().mockResolvedValue({ data: [] }) }))
+vi.mock('./api', () => ({ api: { get } }))
 
 describe('App', () => {
   it('shows the three primary navigation entries', () => {

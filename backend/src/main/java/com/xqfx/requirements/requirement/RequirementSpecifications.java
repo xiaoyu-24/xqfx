@@ -6,9 +6,10 @@ import java.time.LocalDate;
 final class RequirementSpecifications {
     private RequirementSpecifications() { }
 
-    static Specification<RequirementEntity> filtered(Long systemId, Long targetVersionId, String department, String requesterName, RequirementType type, RequirementStatus status, RequirementSaveType saveType, String keyword, LocalDate submittedFrom, LocalDate submittedTo, LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
+    static Specification<RequirementEntity> filtered(Long systemId, boolean unassignedSystem, Long targetVersionId, String department, String requesterName, RequirementType type, RequirementStatus status, RequirementSaveType saveType, String keyword, LocalDate submittedFrom, LocalDate submittedTo, LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
         Specification<RequirementEntity> specification = (root, query, criteriaBuilder) -> criteriaBuilder.isFalse(root.get("deleted"));
         if (systemId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("system").get("id"), systemId));
+        if (unassignedSystem) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.isNull(root.get("system")));
         if (targetVersionId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("targetVersion").get("id"), targetVersionId));
         if (hasText(department)) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("department"), department.trim()));
         if (hasText(requesterName)) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("requesterName"), requesterName.trim()));
