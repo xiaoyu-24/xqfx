@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import RequirementForm from './components/RequirementForm.vue'
 import RequirementList from './components/RequirementList.vue'
+import SystemManagement from './components/SystemManagement.vue'
 
 type PageKey = 'create' | 'list' | 'systems'
 
@@ -39,7 +40,7 @@ const active = computed(() => pages.find((page) => page.key === activePage.value
       <section class="page-placeholder">
         <RequirementForm v-if="activePage === 'create'" />
         <RequirementList v-else-if="activePage === 'list'" />
-        <p v-else>{{ active.description }}</p>
+        <SystemManagement v-else />
       </section>
     </main>
   </div>
