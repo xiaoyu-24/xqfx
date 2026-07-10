@@ -16,6 +16,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Set;
 import java.util.UUID;
+import java.util.zip.ZipFile;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.FileSystemResource;
 
@@ -38,6 +39,7 @@ class AttachmentService {
             if (Files.getFileStore(root).getUsableSpace() - minimumFreeSpaceBytes < file.getSize()) throw new ResponseStatusException(HttpStatus.INSUFFICIENT_STORAGE,"附件目录剩余空间不足");
             temporary=Files.createTempFile(root,"upload-",".tmp");
             var checksum=copyAndChecksum(file.getInputStream(),temporary);
+            if (!hasValidFileSignature(extension, temporary)) throw new IllegalArgumentException("附件内容与文件格式不匹配");
             var storedName=UUID.randomUUID()+"."+extension;
             target=root.resolve(storedName).normalize();
             if(!target.startsWith(root)) throw new IllegalArgumentException("附件路径无效");
@@ -66,6 +68,34 @@ class AttachmentService {
     record AttachmentFile(Resource resource,String originalName,String contentType) { }
     private static String extension(String name) { var index=name.lastIndexOf('.'); return index<0?"":name.substring(index+1).toLowerCase(); }
     private static boolean matchesContentType(String extension, String contentType) { return switch (extension) { case "jpg", "jpeg" -> contentType.equals("image/jpeg"); case "png" -> contentType.equals("image/png"); case "gif" -> contentType.equals("image/gif"); case "webp" -> contentType.equals("image/webp"); case "pdf" -> contentType.equals("application/pdf"); case "doc" -> contentType.equals("application/msword"); case "docx" -> contentType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document"); case "xls" -> contentType.equals("application/vnd.ms-excel"); case "xlsx" -> contentType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); default -> false; }; }
+    private static boolean hasValidFileSignature(String extension, Path file) {
+        try (var input = Files.newInputStream(file)) {
+            var header = input.readNBytes(12);
+            return switch (extension) {
+                case "jpg", "jpeg" -> startsWith(header, 0xFF, 0xD8, 0xFF);
+                case "png" -> startsWith(header, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A);
+                case "gif" -> startsWith(header, "GIF87a") || startsWith(header, "GIF89a");
+                case "webp" -> startsWith(header, "RIFF") && startsWith(header, 8, "WEBP");
+                case "pdf" -> startsWith(header, "%PDF-");
+                case "doc", "xls" -> startsWith(header, 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1);
+                case "docx" -> hasZipDirectory(file, "word/");
+                case "xlsx" -> hasZipDirectory(file, "xl/");
+                default -> false;
+            };
+        } catch (IOException exception) {
+            return false;
+        }
+    }
+    private static boolean hasZipDirectory(Path file, String directory) {
+        try (var zip = new ZipFile(file.toFile())) {
+            return zip.stream().anyMatch(entry -> entry.getName().startsWith(directory));
+        } catch (IOException exception) {
+            return false;
+        }
+    }
+    private static boolean startsWith(byte[] value, int... signature) { if (value.length < signature.length) return false; for (int index = 0; index < signature.length; index++) if ((value[index] & 0xFF) != signature[index]) return false; return true; }
+    private static boolean startsWith(byte[] value, String signature) { return startsWith(value, 0, signature); }
+    private static boolean startsWith(byte[] value, int offset, String signature) { var bytes = signature.getBytes(java.nio.charset.StandardCharsets.US_ASCII); if (value.length < offset + bytes.length) return false; for (int index = 0; index < bytes.length; index++) if (value[offset + index] != bytes[index]) return false; return true; }
     private static String copyAndChecksum(InputStream input, Path temporary) throws IOException { try (input; var output=Files.newOutputStream(temporary)) { var digest=MessageDigest.getInstance("SHA-256"); var buffer=new byte[8192]; for(int read;(read=input.read(buffer))!=-1;) { output.write(buffer,0,read); digest.update(buffer,0,read); } return java.util.HexFormat.of().formatHex(digest.digest()); } catch(NoSuchAlgorithmException exception) { throw new IllegalStateException("SHA-256 不可用",exception); } }
     private static void deleteQuietly(Path path) { if(path==null)return; try { Files.deleteIfExists(path); } catch(IOException ignored) { } }
 }

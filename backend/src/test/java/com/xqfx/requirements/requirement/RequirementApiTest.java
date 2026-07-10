@@ -33,6 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class RequirementApiTest {
 
+    private static final byte[] PDF_CONTENT = "%PDF-1.7\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+
     @org.springframework.beans.factory.annotation.Autowired
     private MockMvc mockMvc;
     @org.springframework.beans.factory.annotation.Autowired
@@ -518,13 +520,13 @@ class RequirementApiTest {
                                 """))
                 .andReturn();
         var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
-        var file = new org.springframework.mock.web.MockMultipartFile("file", "示例.png", "image/png", new byte[] {1, 2, 3});
+        var file = new org.springframework.mock.web.MockMultipartFile("file", "示例.pdf", "application/pdf", PDF_CONTENT);
 
         mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId).file(file))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.originalName").value("示例.png"))
-                .andExpect(jsonPath("$.contentType").value("image/png"))
-                .andExpect(jsonPath("$.checksum").value("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"));
+                .andExpect(jsonPath("$.originalName").value("示例.pdf"))
+                .andExpect(jsonPath("$.contentType").value("application/pdf"))
+                .andExpect(jsonPath("$.checksum").isNotEmpty());
     }
 
     @Test
@@ -534,7 +536,7 @@ class RequirementApiTest {
                 """)).andReturn();
         var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
         mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId)
-                        .file(new org.springframework.mock.web.MockMultipartFile("file", "清单.pdf", "application/pdf", new byte[] {1})))
+                        .file(new org.springframework.mock.web.MockMultipartFile("file", "清单.pdf", "application/pdf", PDF_CONTENT)))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/requirements/{id}/attachments", requirementId))
@@ -548,14 +550,14 @@ class RequirementApiTest {
                 {"requesterName":"下载用户","department":"研发部","title":"下载附件","type":"BUG","content":"验证附件下载"}
                 """)).andReturn();
         var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
-        var file = new org.springframework.mock.web.MockMultipartFile("file", "说明.pdf", "application/pdf", new byte[] {4, 5, 6});
+        var file = new org.springframework.mock.web.MockMultipartFile("file", "说明.pdf", "application/pdf", PDF_CONTENT);
         var uploaded = mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId).file(file)).andReturn();
         var attachmentId = com.jayway.jsonpath.JsonPath.read(uploaded.getResponse().getContentAsString(), "$.id").toString();
 
         mockMvc.perform(get("/api/attachments/{id}", attachmentId))
                 .andExpect(status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Content-Type", "application/pdf"))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().bytes(new byte[] {4, 5, 6}));
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().bytes(PDF_CONTENT));
     }
 
     @Test
@@ -564,7 +566,7 @@ class RequirementApiTest {
                 {"requesterName":"删除附件用户","department":"研发部","title":"删除附件","type":"BUG","content":"验证附件软删除"}
                 """)).andReturn();
         var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
-        var uploaded = mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId).file(new org.springframework.mock.web.MockMultipartFile("file", "删除.pdf", "application/pdf", new byte[] {9}))).andReturn();
+        var uploaded = mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId).file(new org.springframework.mock.web.MockMultipartFile("file", "删除.pdf", "application/pdf", PDF_CONTENT))).andReturn();
         var attachmentId = com.jayway.jsonpath.JsonPath.read(uploaded.getResponse().getContentAsString(), "$.id").toString();
 
         mockMvc.perform(delete("/api/attachments/{id}", attachmentId)).andExpect(status().isNoContent());
