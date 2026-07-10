@@ -8,6 +8,7 @@ type VersionItem = { id: number; name: string; status: string }
 type Item = {
   id: number; title: string; type: string | null; requesterName: string | null; department: string | null; status: string | null
   submittedAt: string | null; systemId: number | null; targetVersionId: number | null; periodStartDate: string | null; periodEndDate: string | null
+  content?: string | null; saveType?: string; updatedAt?: string | null; statusUpdatedAt?: string | null
 }
 
 const filters = reactive({
@@ -22,6 +23,11 @@ const totalPages = ref(0)
 const currentPage = ref(0)
 const pageSize = 20
 const loading = ref(false)
+const selectedRequirement = ref<Item | null>(null)
+const editingId = ref<number | null>(null)
+const editingSaveType = ref('SUBMITTED')
+const editVersions = ref<VersionItem[]>([])
+const editForm = reactive({ requesterName: '', department: '', title: '', type: '', content: '', systemId: '', targetVersionId: '', periodStartDate: '', periodEndDate: '', status: '' })
 
 const statusLabel: Record<string, string> = { PENDING_EVALUATION: '待评估', CONFIRMED: '已确认', IN_DEVELOPMENT: '开发中', PAUSED: '暂停', COMPLETED: '已完成', REJECTED: '已拒绝', CLOSED: '已关闭' }
 const typeLabel: Record<string, string> = { BUG: 'BUG', REQUIREMENT: '需求' }
@@ -84,6 +90,77 @@ const reset = () => {
   query()
 }
 
+const viewDetails = async (id: number) => {
+  try {
+    selectedRequirement.value = (await api.get(`/requirements/${id}`)).data
+  } catch {
+    ElMessage.error('加载需求详情失败')
+  }
+}
+
+const deleteRequirement = async (item: Item) => {
+  if (!window.confirm(`确定删除需求“${item.title || '未命名草稿'}”吗？`)) return
+  try {
+    await api.delete(`/requirements/${item.id}`)
+    if (selectedRequirement.value?.id === item.id) selectedRequirement.value = null
+    ElMessage.success('需求已删除')
+    await query(currentPage.value)
+  } catch {
+    ElMessage.error('删除需求失败')
+  }
+}
+
+const loadEditVersions = async () => {
+  editVersions.value = []
+  if (!editForm.systemId) return
+  try {
+    const { data } = await api.get(`/systems/${editForm.systemId}/versions`)
+    editVersions.value = Array.isArray(data) ? data : []
+  } catch {
+    ElMessage.warning('编辑时加载版本失败')
+  }
+}
+
+const openEdit = async (id: number) => {
+  try {
+    const detail = (await api.get(`/requirements/${id}`)).data as Item
+    editingId.value = id
+    editingSaveType.value = detail.saveType ?? 'SUBMITTED'
+    Object.assign(editForm, {
+      requesterName: detail.requesterName ?? '', department: detail.department ?? '', title: detail.title ?? '', type: detail.type ?? '', content: detail.content ?? '',
+      systemId: detail.systemId === null ? '' : String(detail.systemId), targetVersionId: detail.targetVersionId === null ? '' : String(detail.targetVersionId),
+      periodStartDate: detail.periodStartDate ?? '', periodEndDate: detail.periodEndDate ?? '', status: detail.status ?? '',
+    })
+    await loadEditVersions()
+  } catch {
+    ElMessage.error('加载编辑数据失败')
+  }
+}
+
+const changeEditSystem = async () => {
+  editForm.targetVersionId = ''
+  await loadEditVersions()
+}
+
+const saveEdit = async () => {
+  if (editingId.value === null) return
+  const body = {
+    requesterName: editForm.requesterName, department: editForm.department, title: editForm.title, type: editForm.type || null, content: editForm.content,
+    systemId: editForm.systemId ? Number(editForm.systemId) : null, targetVersionId: editForm.targetVersionId ? Number(editForm.targetVersionId) : null,
+    periodStartDate: editForm.periodStartDate || null, periodEndDate: editForm.periodEndDate || null, status: editForm.status || null,
+  }
+  try {
+    const path = editingSaveType.value === 'DRAFT' ? `/requirements/${editingId.value}/draft` : `/requirements/${editingId.value}`
+    const { data } = await api.put(path, body)
+    if (data?.id) selectedRequirement.value = data
+    editingId.value = null
+    ElMessage.success(editingSaveType.value === 'DRAFT' ? '草稿已更新' : '需求已更新')
+    await query(currentPage.value)
+  } catch {
+    ElMessage.error('保存需求失败，请检查必填项和系统版本')
+  }
+}
+
 onMounted(loadSystems)
 </script>
 
@@ -108,11 +185,30 @@ onMounted(loadSystems)
       <table>
         <thead><tr><th>类型</th><th>需求标题</th><th>所属系统 / 版本</th><th>填写人 / 部门</th><th>周期</th><th>状态</th><th>填写时间</th><th>操作</th></tr></thead>
         <tbody>
-          <tr v-for="item in items" :key="item.id"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item.targetVersionId) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.periodStartDate && item.periodEndDate ? `${item.periodStartDate} 至 ${item.periodEndDate}` : '—' }}</td><td>{{ item.status ? statusLabel[item.status] : saveTypeLabel[item.status ?? 'DRAFT'] }}</td><td>{{ item.submittedAt || '—' }}</td><td>查看详情</td></tr>
+          <tr v-for="item in items" :key="item.id"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item.targetVersionId) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.periodStartDate && item.periodEndDate ? `${item.periodStartDate} 至 ${item.periodEndDate}` : '—' }}</td><td>{{ item.status ? statusLabel[item.status] : saveTypeLabel[item.saveType ?? 'DRAFT'] }}</td><td>{{ item.submittedAt || '—' }}</td><td class="row-actions"><button type="button" :data-test="`view-${item.id}`" @click="viewDetails(item.id)">查看详情</button><button type="button" :data-test="`edit-${item.id}`" @click="openEdit(item.id)">编辑</button><button class="danger" type="button" :data-test="`delete-${item.id}`" @click="deleteRequirement(item)">删除</button></td></tr>
           <tr v-if="!loading && items.length === 0"><td colspan="8" class="empty">请设置筛选条件并查询需求列表</td></tr>
         </tbody>
       </table>
     </div>
+    <form v-if="editingId !== null" class="requirement-edit" data-test="edit-form" @submit.prevent="saveEdit">
+      <div class="detail-header"><h2>{{ editingSaveType === 'DRAFT' ? '编辑草稿' : '编辑需求' }}</h2><button class="secondary" type="button" @click="editingId = null">取消</button></div>
+      <div class="form-grid">
+        <label>姓名 <input v-model="editForm.requesterName" :required="editingSaveType !== 'DRAFT'"></label><label>部门 <input v-model="editForm.department" :required="editingSaveType !== 'DRAFT'"></label>
+        <label class="full-width">需求标题 <input v-model="editForm.title" data-test="edit-title" :required="editingSaveType !== 'DRAFT'"></label>
+        <label>类型 <select v-model="editForm.type" :required="editingSaveType !== 'DRAFT'"><option value="">请选择类型</option><option value="BUG">BUG</option><option value="REQUIREMENT">需求</option></select></label>
+        <label>需求状态 <select v-model="editForm.status" :disabled="editingSaveType === 'DRAFT'"><option value="">待评估</option><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
+        <label>所属系统 <select v-model="editForm.systemId" @change="changeEditSystem"><option value="">暂无系统</option><option v-for="system in systems" :key="system.id" :value="String(system.id)" :disabled="system.status !== 'ACTIVE' && String(system.id) !== editForm.systemId">{{ system.name }}{{ system.status === 'ACTIVE' ? '' : '（已停用）' }}</option></select></label>
+        <label>目标版本 <select v-model="editForm.targetVersionId" :disabled="!editForm.systemId"><option value="">请选择版本（可选）</option><option v-for="version in editVersions" :key="version.id" :value="String(version.id)" :disabled="version.status !== 'ACTIVE' && String(version.id) !== editForm.targetVersionId">{{ version.name }}{{ version.status === 'ACTIVE' ? '' : '（已停用）' }}</option></select></label>
+        <div><span class="field-label">需求时间周期</span><div class="date-range"><input v-model="editForm.periodStartDate" type="date"><span>至</span><input v-model="editForm.periodEndDate" type="date"></div></div>
+        <label class="full-width">需求内容 <textarea v-model="editForm.content" rows="8" :required="editingSaveType !== 'DRAFT'"></textarea></label>
+      </div>
+      <div class="form-actions"><button class="primary" type="submit">保存修改</button></div>
+    </form>
+    <article v-if="selectedRequirement" class="requirement-detail">
+      <div class="detail-header"><h2>{{ selectedRequirement.title || '未命名草稿' }}</h2><button class="secondary" type="button" @click="selectedRequirement = null">关闭详情</button></div>
+      <dl><div><dt>类型</dt><dd>{{ selectedRequirement.type ? typeLabel[selectedRequirement.type] : '—' }}</dd></div><div><dt>状态</dt><dd>{{ selectedRequirement.status ? statusLabel[selectedRequirement.status] : '草稿' }}</dd></div><div><dt>所属系统</dt><dd>{{ systemName(selectedRequirement.systemId) }}</dd></div><div><dt>目标版本</dt><dd>{{ versionName(selectedRequirement.targetVersionId) }}</dd></div><div><dt>填写人 / 部门</dt><dd>{{ selectedRequirement.requesterName || '—' }} / {{ selectedRequirement.department || '—' }}</dd></div><div><dt>填写时间</dt><dd>{{ selectedRequirement.submittedAt || '—' }}</dd></div><div><dt>需求周期</dt><dd>{{ selectedRequirement.periodStartDate && selectedRequirement.periodEndDate ? `${selectedRequirement.periodStartDate} 至 ${selectedRequirement.periodEndDate}` : '—' }}</dd></div><div><dt>最后修改</dt><dd>{{ selectedRequirement.updatedAt || '—' }}</dd></div></dl>
+      <h3>需求内容</h3><p class="detail-content">{{ selectedRequirement.content || '—' }}</p>
+    </article>
     <div class="pagination-placeholder">共 {{ total }} 条　<button type="button" :disabled="loading || currentPage === 0" @click="query(currentPage - 1)">上一页</button>　第 {{ currentPage + 1 }} / {{ Math.max(totalPages, 1) }} 页　<button type="button" :disabled="loading || currentPage + 1 >= totalPages" @click="query(currentPage + 1)">下一页</button></div>
   </section>
 </template>

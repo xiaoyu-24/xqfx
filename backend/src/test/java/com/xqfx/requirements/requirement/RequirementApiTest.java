@@ -301,6 +301,35 @@ class RequirementApiTest {
     }
 
     @Test
+    void rejectsChangingRequirementToInactiveSystem() throws Exception {
+        var inactiveSystem = mockMvc.perform(post("/api/systems")
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"编辑目标停用系统","ownerName":"负责人","collaborators":[]}
+                                """))
+                .andReturn();
+        var inactiveSystemId = com.jayway.jsonpath.JsonPath.read(inactiveSystem.getResponse().getContentAsString(), "$.id").toString();
+        mockMvc.perform(patch("/api/systems/{id}/status", inactiveSystemId)
+                        .contentType("application/json")
+                        .content("{" + "\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isOk());
+        var requirement = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"编辑用户","department":"研发部","title":"编辑系统校验","type":"BUG","content":"不能主动更换到停用系统","systemId":%d}
+                                """.formatted(systemId)))
+                .andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(requirement.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(put("/api/requirements/{id}", requirementId)
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"编辑用户","department":"研发部","title":"编辑系统校验","type":"BUG","content":"不能主动更换到停用系统","systemId":%s}
+                                """.formatted(inactiveSystemId)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void createsAndAssociatesNewSystemWhenSubmittingRequirement() throws Exception {
         var created = mockMvc.perform(post("/api/requirements")
                         .contentType("application/json")
