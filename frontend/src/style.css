@@ -28,3 +28,15 @@ button { font: inherit; }
 .form-actions button { border: 0; border-radius: 5px; cursor: pointer; padding: 9px 18px; }
 .form-actions .primary { background: #2563eb; color: #fff; }
 .form-actions .secondary { background: #e2e8f0; color: #334155; }
+.list-page { color: #334155; }
+.filter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.filter-grid label { display: grid; gap: 6px; font-size: 14px; }
+.filter-grid input, .filter-grid select { border: 1px solid #cbd5e1; border-radius: 5px; padding: 8px; }
+.filter-actions { display: flex; gap: 10px; justify-content: flex-end; margin: 18px 0; }
+.filter-actions button { border: 0; border-radius: 5px; cursor: pointer; padding: 8px 16px; }
+.table-wrap { overflow: auto; border: 1px solid #e2e8f0; border-radius: 6px; }
+table { border-collapse: collapse; min-width: 900px; width: 100%; }
+th, td { border-bottom: 1px solid #e2e8f0; padding: 12px; text-align: left; }
+th { background: #f8fafc; font-weight: 600; }
+.empty { color: #94a3b8; padding: 40px; text-align: center; }
+.pagination-placeholder { color: #64748b; margin-top: 16px; text-align: right; }

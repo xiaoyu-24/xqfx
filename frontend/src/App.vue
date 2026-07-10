@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import RequirementForm from './components/RequirementForm.vue'
+import RequirementList from './components/RequirementList.vue'
 
 type PageKey = 'create' | 'list' | 'systems'
 
@@ -37,6 +38,7 @@ const active = computed(() => pages.find((page) => page.key === activePage.value
       </header>
       <section class="page-placeholder">
         <RequirementForm v-if="activePage === 'create'" />
+        <RequirementList v-else-if="activePage === 'list'" />
         <p v-else>{{ active.description }}</p>
       </section>
     </main>
