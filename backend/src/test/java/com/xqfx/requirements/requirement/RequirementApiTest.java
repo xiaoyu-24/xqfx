@@ -468,6 +468,21 @@ class RequirementApiTest {
     }
 
     @Test
+    void listsAttachmentsForRequirement() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"附件列表用户","department":"研发部","title":"附件列表需求","type":"BUG","content":"查询关联附件"}
+                """)).andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId)
+                        .file(new org.springframework.mock.web.MockMultipartFile("file", "清单.pdf", "application/pdf", new byte[] {1})))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/requirements/{id}/attachments", requirementId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].originalName").value("清单.pdf"));
+    }
+
+    @Test
     void downloadsUploadedAttachment() throws Exception {
         var created = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
                 {"requesterName":"下载用户","department":"研发部","title":"下载附件","type":"BUG","content":"验证附件下载"}

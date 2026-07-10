@@ -37,6 +37,7 @@ describe('RequirementList', () => {
     get.mockImplementation((url: string) => {
       if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '详情需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
       if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '详情需求', content: '这是完整的需求说明', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: '2026-07-10T10:00:00', systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
+      if (url === '/requirements/7/attachments') return Promise.resolve({ data: [{ id: 11, originalName: '说明.pdf', contentType: 'application/pdf', sizeBytes: 12 }] })
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
@@ -46,6 +47,7 @@ describe('RequirementList', () => {
 
     expect(get).toHaveBeenCalledWith('/requirements/7')
     expect(wrapper.text()).toContain('这是完整的需求说明')
+    expect(wrapper.get('[data-test="attachment-download-11"]').attributes('href')).toBe('/api/attachments/11')
   })
 
   it('soft deletes a requirement after confirmation', async () => {

@@ -24,6 +24,9 @@ const form = reactive({
 const submitting = ref(false)
 const systems = ref<Array<{ id: number; name: string; status: string }>>([])
 const versions = ref<Array<{ id: number; name: string; status: string }>>([])
+const selectedFiles = ref<File[]>([])
+const uploadedAttachments = ref<Array<{ id: number; originalName: string }>>([])
+const uploadProgress = ref(0)
 onMounted(async () => { try { systems.value = (await api.get('/systems')).data.filter((system: { status: string }) => system.status === 'ACTIVE') } catch { ElMessage.warning('系统列表加载失败，可选择新系统或稍后重试') } })
 const loadVersions = async () => {
   form.targetVersionId = ''
@@ -49,11 +52,33 @@ const requestBody = () => ({
   targetVersionId: systemMode.value === 'existing' && form.targetVersionId ? Number(form.targetVersionId) : null,
   newSystem: systemMode.value === 'new' ? { name: form.newSystemName, ownerName: form.newSystemOwnerName, collaborators: form.newSystemCollaborators.split(',').map((item) => item.trim()).filter(Boolean) } : null,
 })
+const selectFiles = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  selectedFiles.value = [...selectedFiles.value, ...Array.from(input.files ?? [])]
+  input.value = ''
+}
+const removeSelectedFile = (index: number) => { selectedFiles.value.splice(index, 1) }
+const uploadFiles = async (requirementId: number) => {
+  uploadProgress.value = 0
+  const files = [...selectedFiles.value]
+  for (let index = 0; index < files.length; index += 1) {
+    const body = new FormData()
+    body.append('file', files[index])
+    const { data } = await api.post(`/requirements/${requirementId}/attachments`, body, {
+      onUploadProgress: (event) => { if (event.total) uploadProgress.value = Math.round(((index + event.loaded / event.total) / files.length) * 100) },
+    })
+    uploadedAttachments.value.push(data)
+  }
+  selectedFiles.value = []
+}
 const submit = async (draft: boolean) => {
   submitting.value = true
   try {
     const body = requestBody()
-    await api.post(draft ? '/requirements/drafts' : '/requirements', body)
+    const { data } = await api.post(draft ? '/requirements/drafts' : '/requirements', body)
+    if (selectedFiles.value.length > 0 && data.id) {
+      try { await uploadFiles(data.id) } catch { ElMessage.warning('需求已保存，但部分附件上传失败，可稍后在详情页重试') }
+    }
     ElMessage.success(draft ? '暂存成功' : '保存成功')
   } catch {
     ElMessage.error('保存失败，请检查填写内容后重试')
@@ -99,7 +124,7 @@ const submit = async (draft: boolean) => {
       <label class="full-width">需求内容
         <textarea v-model="form.content" required rows="10" placeholder="请描述背景、问题、期望结果和验收标准"></textarea>
       </label>
-      <div class="full-width attachment-note">附件：支持图片、PDF、Word、Excel；上传功能将在服务端附件接口完成后启用。</div>
+      <div class="full-width attachment-note"><strong>附件</strong>：支持图片、PDF、Word、Excel，业务层不限制单个文件大小。<input data-test="attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectFiles"><span v-if="submitting && selectedFiles.length">上传中 {{ uploadProgress }}%</span><ul v-if="selectedFiles.length"><li v-for="(file, index) in selectedFiles" :key="`${file.name}-${index}`">{{ file.name }} <button type="button" @click="removeSelectedFile(index)">移除</button></li></ul><ul v-if="uploadedAttachments.length"><li v-for="attachment in uploadedAttachments" :key="attachment.id">已上传：{{ attachment.originalName }}</li></ul></div>
     </div>
     <div class="form-actions">
       <button class="secondary" type="button" :disabled="submitting" @click="submit(true)">暂存</button>

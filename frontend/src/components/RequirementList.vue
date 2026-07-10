@@ -10,6 +10,7 @@ type Item = {
   submittedAt: string | null; systemId: number | null; targetVersionId: number | null; periodStartDate: string | null; periodEndDate: string | null
   content?: string | null; saveType?: string; updatedAt?: string | null; statusUpdatedAt?: string | null
 }
+type Attachment = { id: number; originalName: string; contentType: string; sizeBytes: number }
 
 const filters = reactive({
   keyword: '', systemId: '', targetVersionId: '', department: '', requesterName: '', type: '', status: '', saveType: '',
@@ -24,6 +25,7 @@ const currentPage = ref(0)
 const pageSize = 20
 const loading = ref(false)
 const selectedRequirement = ref<Item | null>(null)
+const detailAttachments = ref<Attachment[]>([])
 const editingId = ref<number | null>(null)
 const editingSaveType = ref('SUBMITTED')
 const editVersions = ref<VersionItem[]>([])
@@ -92,9 +94,22 @@ const reset = () => {
 
 const viewDetails = async (id: number) => {
   try {
-    selectedRequirement.value = (await api.get(`/requirements/${id}`)).data
+    const [detail, attachments] = await Promise.all([api.get(`/requirements/${id}`), api.get(`/requirements/${id}/attachments`)])
+    selectedRequirement.value = detail.data
+    detailAttachments.value = attachments.data
   } catch {
     ElMessage.error('加载需求详情失败')
+  }
+}
+
+const deleteAttachment = async (attachment: Attachment) => {
+  if (!window.confirm(`确定删除附件“${attachment.originalName}”吗？`)) return
+  try {
+    await api.delete(`/attachments/${attachment.id}`)
+    detailAttachments.value = detailAttachments.value.filter((item) => item.id !== attachment.id)
+    ElMessage.success('附件已删除')
+  } catch {
+    ElMessage.error('删除附件失败')
   }
 }
 
@@ -205,9 +220,10 @@ onMounted(loadSystems)
       <div class="form-actions"><button class="primary" type="submit">保存修改</button></div>
     </form>
     <article v-if="selectedRequirement" class="requirement-detail">
-      <div class="detail-header"><h2>{{ selectedRequirement.title || '未命名草稿' }}</h2><button class="secondary" type="button" @click="selectedRequirement = null">关闭详情</button></div>
+      <div class="detail-header"><h2>{{ selectedRequirement.title || '未命名草稿' }}</h2><button class="secondary" type="button" @click="selectedRequirement = null; detailAttachments = []">关闭详情</button></div>
       <dl><div><dt>类型</dt><dd>{{ selectedRequirement.type ? typeLabel[selectedRequirement.type] : '—' }}</dd></div><div><dt>状态</dt><dd>{{ selectedRequirement.status ? statusLabel[selectedRequirement.status] : '草稿' }}</dd></div><div><dt>所属系统</dt><dd>{{ systemName(selectedRequirement.systemId) }}</dd></div><div><dt>目标版本</dt><dd>{{ versionName(selectedRequirement.targetVersionId) }}</dd></div><div><dt>填写人 / 部门</dt><dd>{{ selectedRequirement.requesterName || '—' }} / {{ selectedRequirement.department || '—' }}</dd></div><div><dt>填写时间</dt><dd>{{ selectedRequirement.submittedAt || '—' }}</dd></div><div><dt>需求周期</dt><dd>{{ selectedRequirement.periodStartDate && selectedRequirement.periodEndDate ? `${selectedRequirement.periodStartDate} 至 ${selectedRequirement.periodEndDate}` : '—' }}</dd></div><div><dt>最后修改</dt><dd>{{ selectedRequirement.updatedAt || '—' }}</dd></div></dl>
       <h3>需求内容</h3><p class="detail-content">{{ selectedRequirement.content || '—' }}</p>
+      <h3>附件</h3><ul v-if="detailAttachments.length" class="attachment-list"><li v-for="attachment in detailAttachments" :key="attachment.id"><a :data-test="`attachment-download-${attachment.id}`" :href="`/api/attachments/${attachment.id}`" :download="attachment.originalName">{{ attachment.originalName }}</a>（{{ attachment.sizeBytes }} 字节）<button class="danger" type="button" @click="deleteAttachment(attachment)">删除</button></li></ul><p v-else>暂无附件</p>
     </article>
     <div class="pagination-placeholder">共 {{ total }} 条　<button type="button" :disabled="loading || currentPage === 0" @click="query(currentPage - 1)">上一页</button>　第 {{ currentPage + 1 }} / {{ Math.max(totalPages, 1) }} 页　<button type="button" :disabled="loading || currentPage + 1 >= totalPages" @click="query(currentPage + 1)">下一页</button></div>
   </section>

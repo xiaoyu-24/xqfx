@@ -51,4 +51,19 @@ describe('RequirementForm', () => {
 
     expect(post).toHaveBeenCalledWith('/requirements', expect.objectContaining({ systemId: null, targetVersionId: null }))
   })
+
+  it('uploads selected files after a requirement is saved', async () => {
+    post.mockResolvedValueOnce({ data: { id: 15 } }).mockResolvedValueOnce({ data: { id: 32, originalName: '说明.pdf' } })
+    const wrapper = mount(RequirementForm)
+    await wrapper.find('input[placeholder="请输入姓名"]').setValue('林琳')
+    await wrapper.find('input[placeholder="请输入部门"]').setValue('研发部')
+    await wrapper.find('input[placeholder="请简要概括需求"]').setValue('附件上传需求')
+    await wrapper.find('textarea').setValue('保存需求后应上传已选择的附件')
+    const attachmentInput = wrapper.get('[data-test="attachment-input"]')
+    Object.defineProperty(attachmentInput.element, 'files', { value: [new File(['file'], '说明.pdf', { type: 'application/pdf' })] })
+    await attachmentInput.trigger('change')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    expect(post).toHaveBeenNthCalledWith(2, '/requirements/15/attachments', expect.any(FormData), expect.objectContaining({ onUploadProgress: expect.any(Function) }))
+  })
 })
