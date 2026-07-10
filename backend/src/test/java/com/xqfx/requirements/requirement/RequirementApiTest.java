@@ -131,7 +131,8 @@ class RequirementApiTest {
         mockMvc.perform(patch("/api/requirements/{id}/status", id)
                         .contentType("application/json")
                         .content("{\"status\":\"IN_DEVELOPMENT\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("请求参数无效"));
     }
 
     @Test
