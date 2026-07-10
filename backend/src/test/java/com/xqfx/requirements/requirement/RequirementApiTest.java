@@ -16,6 +16,7 @@ import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -84,5 +85,22 @@ class RequirementApiTest {
         mockMvc.perform(get("/api/requirements").param("systemId", systemId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("REQUIREMENT"));
+    }
+
+    @Test
+    void updatesRequirementStatus() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"李四","department":"研发部","title":"状态流转","type":"REQUIREMENT","content":"更新处理状态"}
+                                """))
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(patch("/api/requirements/{id}/status", id)
+                        .contentType("application/json")
+                        .content("{" + "\"status\":\"IN_DEVELOPMENT\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_DEVELOPMENT"));
     }
 }

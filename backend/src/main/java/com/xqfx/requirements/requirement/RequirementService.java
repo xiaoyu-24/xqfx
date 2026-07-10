@@ -18,4 +18,5 @@ class RequirementService {
    return RequirementResponse.from(saved);
  }
  @Transactional(readOnly=true) java.util.List<RequirementResponse> list(RequirementType type,Long systemId){var items=systemId!=null?requirements.findBySystemId(systemId):(type!=null?requirements.findByType(type):requirements.findAll());return items.stream().map(RequirementResponse::from).toList();}
+ @Transactional RequirementResponse updateStatus(Long id,RequirementStatus status){var requirement=requirements.findById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在"));requirement.updateStatus(status);return RequirementResponse.from(requirement);}
 }

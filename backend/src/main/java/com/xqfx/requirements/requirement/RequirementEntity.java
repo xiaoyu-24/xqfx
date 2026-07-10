@@ -24,4 +24,5 @@ class RequirementEntity {
         this.requesterName=requesterName; this.department=department; this.title=title; this.type=type; this.content=content; this.system=system; this.targetVersion=targetVersion; this.periodStartDate=period.startDate(); this.periodEndDate=period.endDate();
     }
     Long id(){return id;} RequirementType type(){return type;} RequirementStatus status(){return status;} SystemVersionEntity targetVersion(){return targetVersion;} LocalDate periodStartDate(){return periodStartDate;} LocalDate periodEndDate(){return periodEndDate;}
+    void updateStatus(RequirementStatus status){this.status=status;}
 }
