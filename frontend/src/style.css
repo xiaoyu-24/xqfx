@@ -69,3 +69,6 @@ th { background: #f8fafc; font-weight: 600; }
 .requirement-detail dd { margin: 3px 0 0; }
 .requirement-detail h3 { font-size: 15px; margin: 18px 0 8px; }
 .detail-content { white-space: pre-wrap; }
+.attachment-upload { display: flex; align-items: center; gap: 10px; }
+.attachment-upload button { border: 0; border-radius: 4px; cursor: pointer; padding: 6px 10px; }
+.attachment-list img { display: block; max-width: min(100%, 640px); max-height: 420px; object-fit: contain; margin-top: 10px; }

@@ -66,6 +66,17 @@ describe('SystemManagement', () => {
     })
   })
 
+  it('sends record version when changing system status', async () => {
+    get.mockResolvedValue({
+      data: [{ id: 12, name: '客户系统', ownerName: '李明', collaborators: [], status: 'ACTIVE', versionCount: 0, requirementCount: 0, recordVersion: 5 }],
+    })
+    const wrapper = mount(SystemManagement)
+    await flushPromises()
+    await wrapper.get('[data-test="toggle-system-12"]').trigger('click')
+
+    expect(patch).toHaveBeenCalledWith('/systems/12/status', { status: 'INACTIVE', recordVersion: 5 })
+  })
+
   it('filters systems by owner and status while showing version and requirement counts', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/systems') {

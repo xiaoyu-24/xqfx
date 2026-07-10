@@ -117,7 +117,7 @@ const saveSystem = async () => {
 const toggleSystem = async (system: SystemItem) => {
   const status: SystemStatus = system.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
   try {
-    await api.patch(`/systems/${system.id}/status`, { status })
+    await api.patch(`/systems/${system.id}/status`, { status, recordVersion: system.recordVersion })
     ElMessage.success(status === 'ACTIVE' ? '系统已启用' : '系统已停用')
     await loadSystems()
   } catch {
@@ -250,7 +250,7 @@ onMounted(loadSystems)
               <button type="button" :data-test="`edit-system-${system.id}`" @click="showEditSystem(system)">编辑</button>
               <button type="button" :data-test="`view-requirements-${system.id}`" @click="viewRequirements(system.id)">查看需求</button>
               <button type="button" :data-test="`versions-${system.id}`" @click="loadVersions(system.id)">版本管理</button>
-              <button type="button" @click="toggleSystem(system)">{{ system.status === 'ACTIVE' ? '停用' : '启用' }}</button>
+              <button type="button" :data-test="`toggle-system-${system.id}`" @click="toggleSystem(system)">{{ system.status === 'ACTIVE' ? '停用' : '启用' }}</button>
               <button type="button" class="danger" @click="deleteSystem(system)">删除</button>
             </td>
           </tr>

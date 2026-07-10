@@ -2,13 +2,14 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RequirementList from './RequirementList.vue'
 
-const { get, put, remove } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), remove: vi.fn() }))
-vi.mock('../api', () => ({ api: { get, put, delete: remove } }))
+const { get, post, put, remove } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), remove: vi.fn() }))
+vi.mock('../api', () => ({ api: { get, post, put, delete: remove } }))
 
 describe('RequirementList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     get.mockResolvedValue({ data: { content: [], totalElements: 0, totalPages: 0 } })
+    post.mockResolvedValue({ data: { id: 100, originalName: '补传.pdf', contentType: 'application/pdf', sizeBytes: 3 } })
     put.mockResolvedValue({ data: {} })
     remove.mockResolvedValue({})
   })
@@ -51,6 +52,24 @@ describe('RequirementList', () => {
     expect(wrapper.get('[data-test="attachment-preview-12"]').attributes('src')).toBe('/api/attachments/12')
   })
 
+  it('uploads a follow-up attachment from requirement detail', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '补传附件需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
+      if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '补传附件需求', content: '需求内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
+      if (url === '/requirements/7/attachments') return Promise.resolve({ data: [] })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = mount(RequirementList)
+    await wrapper.get('[data-test="query"]').trigger('click')
+    await wrapper.get('[data-test="view-7"]').trigger('click')
+    const input = wrapper.get<HTMLInputElement>('[data-test="detail-attachment-input"]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['pdf'], '补传.pdf', { type: 'application/pdf' })] })
+    await input.trigger('change')
+    await wrapper.get('[data-test="detail-attachment-upload"]').trigger('click')
+
+    expect(post).toHaveBeenCalledWith('/requirements/7/attachments', expect.any(FormData), expect.any(Object))
+  })
+
   it('displays the target version name returned with a requirement', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 10, title: '版本展示', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: 3, targetVersionName: 'V2.0', periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
@@ -91,6 +110,35 @@ describe('RequirementList', () => {
     await wrapper.get('[data-test="edit-form"]').trigger('submit.prevent')
 
     expect(put).toHaveBeenCalledWith('/requirements/9', expect.objectContaining({ title: '修改后的标题', systemId: null, targetVersionId: null, recordVersion: 3 }))
+  })
+
+  it('submits a completed draft as a formal requirement', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 14, title: '待提交草稿', type: 'BUG', requesterName: '林琳', department: '研发部', status: null, submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null, saveType: 'DRAFT' }], totalElements: 1, totalPages: 1 } })
+      if (url === '/requirements/14') return Promise.resolve({ data: { id: 14, title: '待提交草稿', content: '完整内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: null, saveType: 'DRAFT', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null, recordVersion: 2 } })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = mount(RequirementList)
+    await wrapper.get('[data-test="query"]').trigger('click')
+    await wrapper.get('[data-test="edit-14"]').trigger('click')
+    await wrapper.get('[data-test="submit-draft-14"]').trigger('click')
+
+    expect(put).toHaveBeenCalledWith('/requirements/14', expect.objectContaining({ recordVersion: 2 }))
+  })
+
+  it('sends pending evaluation when resetting an edited requirement status', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 15, title: '状态回退', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'CONFIRMED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
+      if (url === '/requirements/15') return Promise.resolve({ data: { id: 15, title: '状态回退', content: '内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'CONFIRMED', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null, recordVersion: 1 } })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = mount(RequirementList)
+    await wrapper.get('[data-test="query"]').trigger('click')
+    await wrapper.get('[data-test="edit-15"]').trigger('click')
+    await wrapper.get('[data-test="edit-status"]').setValue('PENDING_EVALUATION')
+    await wrapper.get('[data-test="edit-form"]').trigger('submit.prevent')
+
+    expect(put).toHaveBeenCalledWith('/requirements/15', expect.objectContaining({ status: 'PENDING_EVALUATION' }))
   })
 
   it('auto-queries requirements for a preset system', async () => {

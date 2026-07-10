@@ -34,6 +34,8 @@ const pageSize = 20
 const loading = ref(false)
 const selectedRequirement = ref<Item | null>(null)
 const detailAttachments = ref<Attachment[]>([])
+const detailSelectedFiles = ref<File[]>([])
+const detailUploading = ref(false)
 const editingId = ref<number | null>(null)
 const editingSaveType = ref('SUBMITTED')
 const editVersions = ref<VersionItem[]>([])
@@ -135,6 +137,32 @@ const deleteAttachment = async (attachment: Attachment) => {
   }
 }
 
+const selectDetailFiles = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  detailSelectedFiles.value = Array.from(input.files ?? [])
+}
+
+const uploadDetailAttachments = async () => {
+  if (!selectedRequirement.value || detailSelectedFiles.value.length === 0) return
+  detailUploading.value = true
+  try {
+    for (const file of detailSelectedFiles.value) {
+      const body = new FormData()
+      body.append('file', file)
+      const { data } = await api.post(`/requirements/${selectedRequirement.value.id}/attachments`, body, {
+        onUploadProgress: () => undefined,
+      })
+      detailAttachments.value.push(data)
+    }
+    detailSelectedFiles.value = []
+    ElMessage.success('附件上传成功')
+  } catch {
+    ElMessage.error('附件上传失败，未完成的文件可重新选择后上传')
+  } finally {
+    detailUploading.value = false
+  }
+}
+
 const deleteRequirement = async (item: Item) => {
   if (!window.confirm(`确定删除需求“${item.title || '未命名草稿'}”吗？`)) return
   try {
@@ -179,7 +207,7 @@ const changeEditSystem = async () => {
   await loadEditVersions()
 }
 
-const saveEdit = async () => {
+const saveEdit = async (submitDraft = false) => {
   if (editingId.value === null) return
   const body = {
     requesterName: editForm.requesterName, department: editForm.department, title: editForm.title, type: editForm.type || null, content: editForm.content,
@@ -187,11 +215,12 @@ const saveEdit = async () => {
     periodStartDate: editForm.periodStartDate || null, periodEndDate: editForm.periodEndDate || null, status: editForm.status || null, recordVersion: editForm.recordVersion,
   }
   try {
-    const path = editingSaveType.value === 'DRAFT' ? `/requirements/${editingId.value}/draft` : `/requirements/${editingId.value}`
+    const isDraftSave = editingSaveType.value === 'DRAFT' && !submitDraft
+    const path = isDraftSave ? `/requirements/${editingId.value}/draft` : `/requirements/${editingId.value}`
     const { data } = await api.put(path, body)
     if (data?.id) selectedRequirement.value = data
     editingId.value = null
-    ElMessage.success(editingSaveType.value === 'DRAFT' ? '草稿已更新' : '需求已更新')
+    ElMessage.success(isDraftSave ? '草稿已更新' : submitDraft ? '草稿已正式提交' : '需求已更新')
     await query(currentPage.value)
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status
@@ -229,25 +258,25 @@ onMounted(loadSystems)
         </tbody>
       </table>
     </div>
-    <form v-if="editingId !== null" class="requirement-edit" data-test="edit-form" @submit.prevent="saveEdit">
+    <form v-if="editingId !== null" class="requirement-edit" data-test="edit-form" @submit.prevent="saveEdit()">
       <div class="detail-header"><h2>{{ editingSaveType === 'DRAFT' ? '编辑草稿' : '编辑需求' }}</h2><button class="secondary" type="button" @click="editingId = null">取消</button></div>
       <div class="form-grid">
         <label>姓名 <input v-model="editForm.requesterName" :required="editingSaveType !== 'DRAFT'"></label><label>部门 <input v-model="editForm.department" :required="editingSaveType !== 'DRAFT'"></label>
         <label class="full-width">需求标题 <input v-model="editForm.title" data-test="edit-title" :required="editingSaveType !== 'DRAFT'"></label>
         <label>类型 <select v-model="editForm.type" :required="editingSaveType !== 'DRAFT'"><option value="">请选择类型</option><option value="BUG">BUG</option><option value="REQUIREMENT">需求</option></select></label>
-        <label>需求状态 <select v-model="editForm.status" :disabled="editingSaveType === 'DRAFT'"><option value="">待评估</option><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
+        <label>需求状态 <select v-model="editForm.status" data-test="edit-status" :disabled="editingSaveType === 'DRAFT'"><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
         <label>所属系统 <select v-model="editForm.systemId" @change="changeEditSystem"><option value="">暂无系统</option><option v-for="system in systems" :key="system.id" :value="String(system.id)" :disabled="system.status !== 'ACTIVE' && String(system.id) !== editForm.systemId">{{ system.name }}{{ system.status === 'ACTIVE' ? '' : '（已停用）' }}</option></select></label>
         <label>目标版本 <select v-model="editForm.targetVersionId" :disabled="!editForm.systemId"><option value="">请选择版本（可选）</option><option v-for="version in editVersions" :key="version.id" :value="String(version.id)" :disabled="version.status !== 'ACTIVE' && String(version.id) !== editForm.targetVersionId">{{ version.name }}{{ version.status === 'ACTIVE' ? '' : '（已停用）' }}</option></select></label>
         <div><span class="field-label">需求时间周期</span><div class="date-range"><input v-model="editForm.periodStartDate" type="date"><span>至</span><input v-model="editForm.periodEndDate" type="date"></div></div>
         <label class="full-width">需求内容 <textarea v-model="editForm.content" rows="8" :required="editingSaveType !== 'DRAFT'"></textarea></label>
       </div>
-      <div class="form-actions"><button class="primary" type="submit">保存修改</button></div>
+      <div class="form-actions"><button v-if="editingSaveType === 'DRAFT'" class="secondary" type="button" :data-test="`save-draft-${editingId}`" @click="saveEdit()">保存草稿</button><button class="primary" :type="editingSaveType === 'DRAFT' ? 'button' : 'submit'" :data-test="editingSaveType === 'DRAFT' ? `submit-draft-${editingId}` : undefined" @click="editingSaveType === 'DRAFT' && saveEdit(true)">{{ editingSaveType === 'DRAFT' ? '正式提交' : '保存修改' }}</button></div>
     </form>
     <article v-if="selectedRequirement" class="requirement-detail">
       <div class="detail-header"><h2>{{ selectedRequirement.title || '未命名草稿' }}</h2><button class="secondary" type="button" @click="selectedRequirement = null; detailAttachments = []">关闭详情</button></div>
       <dl><div><dt>类型</dt><dd>{{ selectedRequirement.type ? typeLabel[selectedRequirement.type] : '—' }}</dd></div><div><dt>状态</dt><dd>{{ selectedRequirement.status ? statusLabel[selectedRequirement.status] : '草稿' }}</dd></div><div><dt>所属系统</dt><dd>{{ systemName(selectedRequirement.systemId) }}</dd></div><div><dt>目标版本</dt><dd>{{ versionName(selectedRequirement.targetVersionId, selectedRequirement.targetVersionName) }}</dd></div><div><dt>填写人 / 部门</dt><dd>{{ selectedRequirement.requesterName || '—' }} / {{ selectedRequirement.department || '—' }}</dd></div><div><dt>填写时间</dt><dd>{{ selectedRequirement.submittedAt || '—' }}</dd></div><div><dt>需求周期</dt><dd>{{ selectedRequirement.periodStartDate && selectedRequirement.periodEndDate ? `${selectedRequirement.periodStartDate} 至 ${selectedRequirement.periodEndDate}` : '—' }}</dd></div><div><dt>最后修改</dt><dd>{{ selectedRequirement.updatedAt || '—' }}</dd></div></dl>
       <h3>需求内容</h3><p class="detail-content">{{ selectedRequirement.content || '—' }}</p>
-      <h3>附件</h3><ul v-if="detailAttachments.length" class="attachment-list"><li v-for="attachment in detailAttachments" :key="attachment.id"><a :data-test="`attachment-download-${attachment.id}`" :href="`/api/attachments/${attachment.id}`" :download="attachment.originalName">{{ attachment.originalName }}</a>（{{ attachment.sizeBytes }} 字节）<img v-if="attachment.contentType.startsWith('image/')" :data-test="`attachment-preview-${attachment.id}`" :src="`/api/attachments/${attachment.id}`" :alt="`${attachment.originalName} 预览`"><button class="danger" type="button" @click="deleteAttachment(attachment)">删除</button></li></ul><p v-else>暂无附件</p>
+      <h3>附件</h3><div class="attachment-upload"><input data-test="detail-attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectDetailFiles"><button class="secondary" type="button" data-test="detail-attachment-upload" :disabled="detailUploading || detailSelectedFiles.length === 0" @click="uploadDetailAttachments">{{ detailUploading ? '上传中…' : '上传附件' }}</button></div><ul v-if="detailAttachments.length" class="attachment-list"><li v-for="attachment in detailAttachments" :key="attachment.id"><a :data-test="`attachment-download-${attachment.id}`" :href="`/api/attachments/${attachment.id}`" :download="attachment.originalName">{{ attachment.originalName }}</a>（{{ attachment.sizeBytes }} 字节）<img v-if="attachment.contentType.startsWith('image/')" :data-test="`attachment-preview-${attachment.id}`" :src="`/api/attachments/${attachment.id}`" :alt="`${attachment.originalName} 预览`"><button class="danger" type="button" @click="deleteAttachment(attachment)">删除</button></li></ul><p v-else>暂无附件</p>
     </article>
     <div class="pagination-placeholder">共 {{ total }} 条　<button type="button" :disabled="loading || currentPage === 0" @click="query(currentPage - 1)">上一页</button>　第 {{ currentPage + 1 }} / {{ Math.max(totalPages, 1) }} 页　<button type="button" :disabled="loading || currentPage + 1 >= totalPages" @click="query(currentPage + 1)">下一页</button></div>
   </section>
