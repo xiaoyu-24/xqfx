@@ -9,9 +9,13 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDateTime;
+import java.util.Locale;
 
 @Entity
 @Table(name = "systems")
@@ -24,8 +28,20 @@ public class SystemEntity {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @Column(unique = true, length = 100)
+    private String activeNameKey;
+
     @Column(nullable = false, length = 50)
     private String ownerName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private SystemStatus status = SystemStatus.ACTIVE;
+
+    @Column(nullable = false)
+    private boolean deleted = false;
+
+    private LocalDateTime deletedAt;
 
     @ElementCollection
     @CollectionTable(name = "system_collaborators", joinColumns = @JoinColumn(name = "system_id"))
@@ -37,6 +53,14 @@ public class SystemEntity {
 
     public SystemEntity(SystemProfile profile) {
         this.name = profile.name();
+        this.activeNameKey = normalizedName(profile.name());
+        this.ownerName = profile.ownerName();
+        this.collaborators = new ArrayList<>(profile.collaborators());
+    }
+
+    void update(SystemProfile profile) {
+        this.name = profile.name();
+        this.activeNameKey = normalizedName(profile.name());
         this.ownerName = profile.ownerName();
         this.collaborators = new ArrayList<>(profile.collaborators());
     }
@@ -55,5 +79,27 @@ public class SystemEntity {
 
     List<String> collaborators() {
         return List.copyOf(collaborators);
+    }
+
+    SystemStatus status() {
+        return status;
+    }
+
+    public boolean isActive() {
+        return status == SystemStatus.ACTIVE;
+    }
+
+    void updateStatus(SystemStatus status) {
+        this.status = status;
+    }
+
+    void delete() {
+        this.deleted = true;
+        this.deletedAt = LocalDateTime.now();
+        this.activeNameKey = null;
+    }
+
+    static String normalizedName(String name) {
+        return name.trim().toLowerCase(Locale.ROOT);
     }
 }

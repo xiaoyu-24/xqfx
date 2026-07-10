@@ -257,4 +257,26 @@ class RequirementApiTest {
                 .andExpect(jsonPath("$[?(@.saveType == 'DRAFT')]").isNotEmpty())
                 .andExpect(jsonPath("$[?(@.saveType != 'DRAFT')]").isEmpty());
     }
+
+    @Test
+    void rejectsNewRequirementForInactiveSystem() throws Exception {
+        var createdSystem = mockMvc.perform(post("/api/systems")
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"已停用系统","ownerName":"负责人","collaborators":[]}
+                                """))
+                .andReturn();
+        var inactiveSystemId = com.jayway.jsonpath.JsonPath.read(createdSystem.getResponse().getContentAsString(), "$.id").toString();
+        mockMvc.perform(patch("/api/systems/{id}/status", inactiveSystemId)
+                        .contentType("application/json")
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"马超","department":"支持部","title":"停用系统需求","type":"BUG","content":"停用系统不能接收新的正式需求","systemId":%s}
+                                """.formatted(inactiveSystemId)))
+                .andExpect(status().isConflict());
+    }
 }
