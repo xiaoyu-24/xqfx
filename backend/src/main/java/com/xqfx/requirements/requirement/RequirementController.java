@@ -1,7 +1,7 @@
 package com.xqfx.requirements.requirement;
 import jakarta.validation.Valid; import jakarta.validation.constraints.NotBlank; import org.springframework.http.HttpStatus; import org.springframework.web.bind.annotation.*; import java.time.LocalDate;
 @RestController @RequestMapping("/api/requirements") class RequirementController {
- private final RequirementService service; RequirementController(RequirementService service){this.service=service;}
+ private final RequirementService service; private final AttachmentService attachments; RequirementController(RequirementService service,AttachmentService attachments){this.service=service;this.attachments=attachments;}
  @PostMapping @ResponseStatus(HttpStatus.CREATED) RequirementResponse create(@Valid @RequestBody CreateRequirementRequest r){return service.create(r.requesterName(),r.department(),r.title(),r.type(),r.content(),r.systemId(),r.targetVersionId(),r.periodStartDate(),r.periodEndDate(),r.newSystem()==null?null:r.newSystem().name(),r.newSystem()==null?null:r.newSystem().ownerName(),r.newSystem()==null?null:r.newSystem().collaborators());}
  @PostMapping("/drafts") @ResponseStatus(HttpStatus.CREATED) RequirementResponse createDraft(@RequestBody DraftRequirementRequest r){return service.createDraft(r.requesterName(),r.department(),r.title(),r.type(),r.content(),r.systemId(),r.targetVersionId(),r.periodStartDate(),r.periodEndDate());}
  @GetMapping java.util.List<RequirementResponse> list(@RequestParam(required=false) RequirementType type,@RequestParam(required=false) Long systemId,@RequestParam(required=false) RequirementSaveType saveType){return service.list(type,systemId,saveType);}
@@ -11,6 +11,7 @@ import jakarta.validation.Valid; import jakarta.validation.constraints.NotBlank;
  @PutMapping("/{id}") RequirementResponse update(@PathVariable Long id,@Valid @RequestBody UpdateRequirementRequest r){return service.update(id,r.requesterName(),r.department(),r.title(),r.type(),r.content(),r.systemId(),r.targetVersionId(),r.periodStartDate(),r.periodEndDate(),r.status());}
  @PatchMapping("/{id}/status") RequirementResponse updateStatus(@PathVariable Long id,@Valid @RequestBody UpdateStatusRequest request){return service.updateStatus(id,request.status());}
  @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id){service.delete(id);}
+ @PostMapping("/{id}/attachments") @ResponseStatus(HttpStatus.CREATED) AttachmentResponse upload(@PathVariable Long id,@RequestParam("file") org.springframework.web.multipart.MultipartFile file){return attachments.upload(id,file);}
  record UpdateStatusRequest(@jakarta.validation.constraints.NotNull RequirementStatus status){}
  record UpdateRequirementRequest(@NotBlank String requesterName,@NotBlank String department,@NotBlank String title,@jakarta.validation.constraints.NotNull RequirementType type,@NotBlank String content,Long systemId,Long targetVersionId,LocalDate periodStartDate,LocalDate periodEndDate,RequirementStatus status){}
  record CreateRequirementRequest(@NotBlank String requesterName,@NotBlank String department,@NotBlank String title,@jakarta.validation.constraints.NotNull RequirementType type,@NotBlank String content,Long systemId,Long targetVersionId,LocalDate periodStartDate,LocalDate periodEndDate,NewSystemRequest newSystem){}

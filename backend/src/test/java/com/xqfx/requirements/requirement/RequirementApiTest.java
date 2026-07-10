@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -376,5 +377,22 @@ class RequirementApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(1))
                 .andExpect(jsonPath("$.content[0].id").value(Long.parseLong(requirementId)));
+    }
+
+    @Test
+    void uploadsSupportedAttachmentForRequirement() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"附件用户","department":"研发部","title":"附件需求","type":"BUG","content":"上传附件并保存到本地目录"}
+                                """))
+                .andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var file = new org.springframework.mock.web.MockMultipartFile("file", "示例.png", "image/png", new byte[] {1, 2, 3});
+
+        mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId).file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.originalName").value("示例.png"))
+                .andExpect(jsonPath("$.contentType").value("image/png"));
     }
 }
