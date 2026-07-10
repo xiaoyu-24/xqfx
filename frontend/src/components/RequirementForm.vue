@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { api } from '../api'
 
 type SystemMode = 'existing' | 'new' | 'none'
 
@@ -18,10 +20,29 @@ const form = reactive({
   newSystemCollaborators: '',
   content: '',
 })
+
+const submitting = ref(false)
+const requestBody = () => ({
+  requesterName: form.requesterName, department: form.department, title: form.title, type: form.type,
+  content: form.content, periodStartDate: form.periodStartDate || null, periodEndDate: form.periodEndDate || null,
+  systemId: systemMode.value === 'existing' && form.systemId ? Number(form.systemId) : null,
+  targetVersionId: form.targetVersionId ? Number(form.targetVersionId) : null,
+  newSystem: systemMode.value === 'new' ? { name: form.newSystemName, ownerName: form.newSystemOwnerName, collaborators: form.newSystemCollaborators.split(',').map((item) => item.trim()).filter(Boolean) } : null,
+})
+const submit = async (draft: boolean) => {
+  submitting.value = true
+  try {
+    const body = requestBody()
+    await api.post(draft ? '/requirements/drafts' : '/requirements', body)
+    ElMessage.success(draft ? '暂存成功' : '保存成功')
+  } catch {
+    ElMessage.error('保存失败，请检查填写内容后重试')
+  } finally { submitting.value = false }
+}
 </script>
 
 <template>
-  <form class="requirement-form" @submit.prevent>
+  <form class="requirement-form" @submit.prevent="submit(false)">
     <div class="form-grid">
       <label>姓名 <input v-model="form.requesterName" required placeholder="请输入姓名"></label>
       <label>部门 <input v-model="form.department" required placeholder="请输入部门"></label>
@@ -61,8 +82,8 @@ const form = reactive({
       <div class="full-width attachment-note">附件：支持图片、PDF、Word、Excel；上传功能将在服务端附件接口完成后启用。</div>
     </div>
     <div class="form-actions">
-      <button class="secondary" type="button">暂存</button>
-      <button class="primary" type="submit">保存需求</button>
+      <button class="secondary" type="button" :disabled="submitting" @click="submit(true)">暂存</button>
+      <button class="primary" type="submit" :disabled="submitting">保存需求</button>
     </div>
   </form>
 </template>
