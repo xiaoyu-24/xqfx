@@ -342,4 +342,38 @@ class RequirementApiTest {
                 .andExpect(jsonPath("$.totalElements").isNumber())
                 .andExpect(jsonPath("$.totalPages").isNumber());
     }
+
+    @Test
+    void combinesRequirementPageFilters() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"组合用户","department":"产品部","title":"组合筛选需求","type":"REQUIREMENT","content":"通过多个筛选条件定位此需求","systemId":%d,"targetVersionId":%d}
+                                """.formatted(systemId, versionId)))
+                .andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        mockMvc.perform(patch("/api/requirements/{id}/status", requirementId)
+                        .contentType("application/json")
+                        .content("{\"status\":\"CONFIRMED\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"其他用户","department":"产品部","title":"另一条需求","type":"BUG","content":"不应命中组合筛选","systemId":%d}
+                                """.formatted(systemId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/requirements/page")
+                        .param("page", "0").param("size", "20")
+                        .param("systemId", systemId.toString())
+                        .param("department", "产品部")
+                        .param("requesterName", "组合用户")
+                        .param("type", "REQUIREMENT")
+                        .param("status", "CONFIRMED")
+                        .param("saveType", "SUBMITTED")
+                        .param("keyword", "组合筛选"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(Long.parseLong(requirementId)));
+    }
 }
