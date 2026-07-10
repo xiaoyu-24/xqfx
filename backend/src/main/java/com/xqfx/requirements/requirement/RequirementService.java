@@ -10,8 +10,9 @@ import java.time.LocalDate;
 class RequirementService {
  private final RequirementRepository requirements; private final SystemRepository systems; private final SystemVersionRepository versions;
  RequirementService(RequirementRepository requirements,SystemRepository systems,SystemVersionRepository versions){this.requirements=requirements;this.systems=systems;this.versions=versions;}
- @Transactional RequirementResponse create(String requesterName,String department,String title,RequirementType type,String content,Long systemId,Long targetVersionId,LocalDate start,LocalDate end){
-   var system=systemId==null?null:systems.findById(systemId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"系统不存在"));
+ @Transactional RequirementResponse create(String requesterName,String department,String title,RequirementType type,String content,Long systemId,Long targetVersionId,LocalDate start,LocalDate end,String newSystemName,String newSystemOwnerName,java.util.List<String> newSystemCollaborators){
+   if(systemId!=null&&newSystemName!=null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"不能同时选择已有系统和新系统");
+   var system=newSystemName==null?(systemId==null?null:systems.findById(systemId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"系统不存在"))):createNewSystem(newSystemName,newSystemOwnerName,newSystemCollaborators);
    if(system!=null&&!system.isActive()) throw new ResponseStatusException(HttpStatus.CONFLICT,"系统已停用，不能新建需求");
    var version=targetVersionId==null?null:versions.findById(targetVersionId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"版本不存在"));
    if(version!=null&&!version.isActive()) throw new ResponseStatusException(HttpStatus.CONFLICT,"版本已停用，不能作为目标版本");
@@ -27,4 +28,5 @@ class RequirementService {
  @Transactional RequirementResponse updateStatus(Long id,RequirementStatus status){var requirement=findActive(id);requirement.updateStatus(status);return RequirementResponse.from(requirement);}
  @Transactional void delete(Long id){findActive(id).delete();}
  private RequirementEntity findActive(Long id){return requirements.findByIdAndDeletedFalse(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在"));}
+ private SystemEntity createNewSystem(String name,String ownerName,java.util.List<String> collaborators){var profile=SystemProfile.create(name,ownerName,collaborators==null?java.util.List.of():collaborators);if(systems.existsByActiveNameKey(SystemEntity.normalizedName(profile.name())))throw new ResponseStatusException(HttpStatus.CONFLICT,"系统名称已存在");return systems.save(new SystemEntity(profile));}
 }

@@ -99,7 +99,7 @@ public class SystemEntity {
         this.activeNameKey = null;
     }
 
-    static String normalizedName(String name) {
+    public static String normalizedName(String name) {
         return name.trim().toLowerCase(Locale.ROOT);
     }
 }

@@ -294,4 +294,21 @@ class RequirementApiTest {
                                 """.formatted(systemId, versionId)))
                 .andExpect(status().isConflict());
     }
+
+    @Test
+    void createsAndAssociatesNewSystemWhenSubmittingRequirement() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"陈琳","department":"产品部","title":"新系统需求","type":"REQUIREMENT","content":"正式保存时应同时创建新系统","newSystem":{"name":"新客户系统","ownerName":"孙明","collaborators":["王红","李军"]}}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.systemId").isNumber())
+                .andReturn();
+        var newSystemId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.systemId").toString();
+
+        mockMvc.perform(get("/api/systems"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + newSystemId + " && @.name == '新客户系统' && @.ownerName == '孙明')]").isNotEmpty());
+    }
 }
