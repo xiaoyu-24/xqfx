@@ -60,7 +60,10 @@ class RequirementApiTest {
                 .andExpect(jsonPath("$.status").value("PENDING_EVALUATION"))
                 .andExpect(jsonPath("$.targetVersionId").value(versionId))
                 .andExpect(jsonPath("$.periodStartDate").value("2026-07-10"))
-                .andExpect(jsonPath("$.periodEndDate").value("2026-07-20"));
+                .andExpect(jsonPath("$.periodEndDate").value("2026-07-20"))
+                .andExpect(jsonPath("$.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.submittedAt").isNotEmpty())
+                .andExpect(jsonPath("$.statusUpdatedAt").isNotEmpty());
     }
 
     @Test
