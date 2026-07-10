@@ -380,6 +380,18 @@ class RequirementApiTest {
     }
 
     @Test
+    void filtersRequirementsBySubmittedDateRange() throws Exception {
+        mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"日期用户","department":"研发部","title":"日期筛选","type":"BUG","content":"验证填写时间范围筛选"}
+                """)).andExpect(status().isCreated());
+        var tomorrow = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).plusDays(1).toString();
+
+        mockMvc.perform(get("/api/requirements/page").param("page", "0").param("size", "20").param("submittedFrom", tomorrow))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isEmpty());
+    }
+
+    @Test
     void uploadsSupportedAttachmentForRequirement() throws Exception {
         var created = mockMvc.perform(post("/api/requirements")
                         .contentType("application/json")

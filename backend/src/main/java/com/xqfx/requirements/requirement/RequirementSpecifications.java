@@ -1,11 +1,12 @@
 package com.xqfx.requirements.requirement;
 
 import org.springframework.data.jpa.domain.Specification;
+import java.time.LocalDate;
 
 final class RequirementSpecifications {
     private RequirementSpecifications() { }
 
-    static Specification<RequirementEntity> filtered(Long systemId, Long targetVersionId, String department, String requesterName, RequirementType type, RequirementStatus status, RequirementSaveType saveType, String keyword) {
+    static Specification<RequirementEntity> filtered(Long systemId, Long targetVersionId, String department, String requesterName, RequirementType type, RequirementStatus status, RequirementSaveType saveType, String keyword, LocalDate submittedFrom, LocalDate submittedTo) {
         Specification<RequirementEntity> specification = (root, query, criteriaBuilder) -> criteriaBuilder.isFalse(root.get("deleted"));
         if (systemId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("system").get("id"), systemId));
         if (targetVersionId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("targetVersion").get("id"), targetVersionId));
@@ -21,6 +22,8 @@ final class RequirementSpecifications {
                     criteriaBuilder.like(criteriaBuilder.lower(root.get("content")), pattern)
             ));
         }
+        if (submittedFrom != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.greaterThanOrEqualTo(root.get("submittedAt"), submittedFrom.atStartOfDay()));
+        if (submittedTo != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.lessThan(root.get("submittedAt"), submittedTo.plusDays(1).atStartOfDay()));
         return specification;
     }
 
