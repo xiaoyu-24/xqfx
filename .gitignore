@@ -1,0 +1,10 @@
+.tools/
+.superpowers/
+.visual-server.err
+.visual-server.out
+backend/target/
+frontend/node_modules/
+frontend/dist/
+uploads/
+.env
+
