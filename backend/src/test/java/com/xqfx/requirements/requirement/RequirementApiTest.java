@@ -72,4 +72,17 @@ class RequirementApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("BUG"));
     }
+
+    @Test
+    void filtersRequirementsBySystem() throws Exception {
+        mockMvc.perform(post("/api/requirements")
+                .contentType("application/json")
+                .content("""
+                        {"requesterName":"赵敏","department":"市场部","title":"客户标签","type":"REQUIREMENT","content":"增加客户标签","systemId":%d}
+                        """.formatted(systemId)));
+
+        mockMvc.perform(get("/api/requirements").param("systemId", systemId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("REQUIREMENT"));
+    }
 }
