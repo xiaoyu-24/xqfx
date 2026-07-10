@@ -15,6 +15,10 @@ type SystemItem = {
 }
 type VersionItem = { id: number; systemId: number; name: string; status: SystemStatus; requirementCount: number }
 
+const emit = defineEmits<{
+  'view-requirements': [systemId: number]
+}>()
+
 const systems = ref<SystemItem[]>([])
 const versions = ref<VersionItem[]>([])
 const loading = ref(false)
@@ -204,6 +208,10 @@ const deleteVersion = async (version: VersionItem) => {
   }
 }
 
+const viewRequirements = (systemId: number) => {
+  emit('view-requirements', systemId)
+}
+
 onMounted(loadSystems)
 </script>
 
@@ -237,6 +245,7 @@ onMounted(loadSystems)
             <td>{{ system.name }}</td><td>{{ system.ownerName }}</td><td>{{ system.collaborators.join('、') || '—' }}</td><td>{{ system.status === 'ACTIVE' ? '启用' : '停用' }}</td><td>{{ system.versionCount }}</td><td>{{ system.requirementCount }}</td>
             <td class="row-actions">
               <button type="button" @click="showEditSystem(system)">编辑</button>
+              <button type="button" :data-test="`view-requirements-${system.id}`" @click="viewRequirements(system.id)">查看需求</button>
               <button type="button" :data-test="`versions-${system.id}`" @click="loadVersions(system.id)">版本管理</button>
               <button type="button" @click="toggleSystem(system)">{{ system.status === 'ACTIVE' ? '停用' : '启用' }}</button>
               <button type="button" class="danger" @click="deleteSystem(system)">删除</button>

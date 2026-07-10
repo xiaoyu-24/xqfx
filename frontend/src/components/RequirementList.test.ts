@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RequirementList from './RequirementList.vue'
 
@@ -77,5 +77,24 @@ describe('RequirementList', () => {
     await wrapper.get('[data-test="edit-form"]').trigger('submit.prevent')
 
     expect(put).toHaveBeenCalledWith('/requirements/9', expect.objectContaining({ title: '修改后的标题', systemId: null, targetVersionId: null }))
+  })
+
+  it('auto-queries requirements for a preset system', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/systems') return Promise.resolve({ data: [{ id: 12, name: '客户系统', status: 'ACTIVE' }] })
+      if (url === '/systems/12/versions') return Promise.resolve({ data: [] })
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [], totalElements: 0, totalPages: 0 } })
+      return Promise.resolve({ data: [] })
+    })
+
+    const wrapper = mount(RequirementList, {
+      props: { presetSystemId: 12, presetRequestKey: 1 },
+    })
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="system-filter"]').element as HTMLSelectElement).value).toBe('12')
+    expect(get).toHaveBeenCalledWith('/requirements/page', {
+      params: { page: 0, size: 20, systemId: 12 },
+    })
   })
 })

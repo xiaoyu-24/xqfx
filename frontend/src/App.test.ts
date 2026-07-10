@@ -19,13 +19,23 @@ vi.mock('./components/RequirementForm.vue', () => ({
 
 vi.mock('./components/RequirementList.vue', () => ({
   default: defineComponent({
-    template: '<p>RequirementList Stub</p>',
+    props: {
+      presetSystemId: { type: Number, default: null },
+      presetRequestKey: { type: Number, default: 0 },
+    },
+    template: '<p>RequirementList Stub {{ presetSystemId }} {{ presetRequestKey }}</p>',
   }),
 }))
 
 vi.mock('./components/SystemManagement.vue', () => ({
   default: defineComponent({
-    template: '<p>SystemManagement Stub</p>',
+    emits: ['view-requirements'],
+    template: `
+      <div>
+        <button type="button" data-test="view-system-requirements" @click="$emit('view-requirements', 12)">view requirements</button>
+        <p>SystemManagement Stub</p>
+      </div>
+    `,
   }),
 }))
 
@@ -57,5 +67,15 @@ describe('App', () => {
     await wrapper.get('[data-test="back"]').trigger('click')
 
     expect(wrapper.text()).toContain('RequirementList Stub')
+  })
+
+  it('opens the requirement list with a system preset from system management', async () => {
+    const wrapper = mount(App)
+    const navButtons = wrapper.findAll('aside nav button')
+
+    await navButtons[2].trigger('click')
+    await wrapper.get('[data-test="view-system-requirements"]').trigger('click')
+
+    expect(wrapper.text()).toContain('RequirementList Stub 12 1')
   })
 })

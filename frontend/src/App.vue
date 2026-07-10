@@ -15,13 +15,20 @@ const pages: Array<{ key: PageKey; label: string; description: string }> = [
 const activePage = ref<PageKey>('create')
 const lastNonCreatePage = ref<PageKey>('list')
 const createFormDirty = ref(false)
+const listPresetSystemId = ref<number | null>(null)
+const listPresetRequestKey = ref(0)
 const active = computed(() => pages.find((page) => page.key === activePage.value)!)
 
-const navigateTo = (page: PageKey, skipGuard = false) => {
+const clearListPreset = () => {
+  listPresetSystemId.value = null
+}
+
+const navigateTo = (page: PageKey, skipGuard = false, preserveListPreset = false) => {
   if (page === activePage.value) return
   if (!skipGuard && activePage.value === 'create' && createFormDirty.value && page !== 'create') {
     if (!window.confirm('当前内容尚未保存，确定离开填写页吗？')) return
   }
+  if (!preserveListPreset) clearListPreset()
   if (page !== 'create') lastNonCreatePage.value = page
   activePage.value = page
 }
@@ -34,6 +41,12 @@ const handleCreateBack = () => {
 const handleCreateSubmitted = () => {
   createFormDirty.value = false
   navigateTo('list', true)
+}
+
+const handleViewSystemRequirements = (systemId: number) => {
+  listPresetSystemId.value = systemId
+  listPresetRequestKey.value += 1
+  navigateTo('list', false, true)
 }
 </script>
 
@@ -65,8 +78,12 @@ const handleCreateSubmitted = () => {
           @dirty-change="createFormDirty = $event"
           @submitted="handleCreateSubmitted"
         />
-        <RequirementList v-else-if="activePage === 'list'" />
-        <SystemManagement v-else />
+        <RequirementList
+          v-else-if="activePage === 'list'"
+          :preset-system-id="listPresetSystemId"
+          :preset-request-key="listPresetRequestKey"
+        />
+        <SystemManagement v-else @view-requirements="handleViewSystemRequirements" />
       </section>
     </main>
   </div>

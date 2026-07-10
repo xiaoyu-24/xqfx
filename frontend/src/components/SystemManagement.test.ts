@@ -82,4 +82,16 @@ describe('SystemManagement', () => {
     expect(tableBody).toContain('财务系统')
     expect(tableBody).not.toContain('客户系统')
   })
+
+  it('emits an event to view requirements for a system', async () => {
+    get.mockResolvedValue({
+      data: [{ id: 12, name: '客户系统', ownerName: '李明', collaborators: [], status: 'ACTIVE', versionCount: 1, requirementCount: 3 }],
+    })
+    const wrapper = mount(SystemManagement)
+    await flushPromises()
+
+    await wrapper.get('[data-test="view-requirements-12"]').trigger('click')
+
+    expect(wrapper.emitted('view-requirements')).toEqual([[12]])
+  })
 })

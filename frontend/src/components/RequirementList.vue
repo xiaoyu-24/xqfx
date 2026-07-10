@@ -3,6 +3,14 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
 
+const props = withDefaults(defineProps<{
+  presetSystemId?: number | null
+  presetRequestKey?: number
+}>(), {
+  presetSystemId: null,
+  presetRequestKey: 0,
+})
+
 type SystemItem = { id: number; name: string; status: string }
 type VersionItem = { id: number; name: string; status: string }
 type Item = {
@@ -85,6 +93,20 @@ const query = async (page = 0) => {
     loading.value = false
   }
 }
+
+const applyPresetSystemFilter = async (systemId: number | null) => {
+  if (systemId === null) return
+  filters.systemId = String(systemId)
+  await query()
+}
+
+watch(
+  () => [props.presetSystemId, props.presetRequestKey] as const,
+  async ([systemId]) => {
+    await applyPresetSystemFilter(systemId)
+  },
+  { immediate: true }
+)
 
 const reset = () => {
   Object.assign(filters, { keyword: '', systemId: '', targetVersionId: '', department: '', requesterName: '', type: '', status: '', saveType: '', submittedFrom: '', submittedTo: '', periodOverlapStart: '', periodOverlapEnd: '' })
