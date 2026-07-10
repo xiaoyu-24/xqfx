@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Service
 class SystemService {
@@ -61,6 +63,27 @@ class SystemService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统存在关联需求，无法删除");
         }
         system.delete();
+    }
+
+    @Transactional
+    SystemMigrationResponse migrate(Long sourceSystemId, Long targetSystemId) {
+        findActive(sourceSystemId);
+        SystemEntity targetSystem = null;
+        if (targetSystemId != null) {
+            if (sourceSystemId.equals(targetSystemId)) {
+                throw new IllegalArgumentException("迁移目标不能是当前系统");
+            }
+            targetSystem = findActive(targetSystemId);
+            if (!targetSystem.isActive()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "迁移目标系统已停用");
+            }
+        }
+        var migratedCount = requirements.migrateSystemAndClearTargetVersion(
+                sourceSystemId,
+                targetSystem,
+                LocalDateTime.now(ZoneId.of("Asia/Shanghai"))
+        );
+        return new SystemMigrationResponse(migratedCount);
     }
 
     private SystemEntity findActive(Long id) {

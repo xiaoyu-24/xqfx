@@ -113,6 +113,49 @@ class SystemApiTest {
     }
 
     @Test
+    void migratesRequirementsToAnotherActiveSystemAndClearsTargetVersion() throws Exception {
+        var source = mockMvc.perform(post("/api/systems")
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"待迁移源系统","ownerName":"负责人甲","collaborators":[]}
+                                """))
+                .andReturn();
+        var sourceId = com.jayway.jsonpath.JsonPath.read(source.getResponse().getContentAsString(), "$.id").toString();
+        var target = mockMvc.perform(post("/api/systems")
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"迁移目标系统","ownerName":"负责人乙","collaborators":[]}
+                                """))
+                .andReturn();
+        var targetId = com.jayway.jsonpath.JsonPath.read(target.getResponse().getContentAsString(), "$.id").toString();
+        var version = mockMvc.perform(post("/api/systems/{systemId}/versions", sourceId)
+                        .contentType("application/json")
+                        .content("{" + "\"name\":\"V1.0\"}"))
+                .andReturn();
+        var versionId = com.jayway.jsonpath.JsonPath.read(version.getResponse().getContentAsString(), "$.id").toString();
+        var requirement = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"林琳","department":"信息部","title":"待迁移需求","type":"REQUIREMENT","content":"迁移后应归入新系统","systemId":%s,"targetVersionId":%s}
+                                """.formatted(sourceId, versionId)))
+                .andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(requirement.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(post("/api/systems/{id}/migrate", sourceId)
+                        .contentType("application/json")
+                        .content("{\"targetSystemId\":" + targetId + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.migratedCount").value(1));
+
+        mockMvc.perform(get("/api/requirements/{id}", requirementId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.systemId").value(Long.parseLong(targetId)))
+                .andExpect(jsonPath("$.targetVersionId").isEmpty());
+        mockMvc.perform(delete("/api/systems/{id}", sourceId))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
     void deletesSystemWithoutActiveRequirements() throws Exception {
         var created = mockMvc.perform(post("/api/systems")
                         .contentType("application/json")

@@ -47,6 +47,11 @@ class SystemController {
         return service.updateStatus(id, request.status());
     }
 
+    @PostMapping("/{id}/migrate")
+    SystemMigrationResponse migrate(@PathVariable Long id, @RequestBody MigrateSystemRequest request) {
+        return service.migrate(id, request.targetSystemId());
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void delete(@PathVariable Long id) {
@@ -74,5 +79,8 @@ class SystemController {
     }
 
     record UpdateStatusRequest(@jakarta.validation.constraints.NotNull SystemStatus status) {
+    }
+
+    record MigrateSystemRequest(Long targetSystemId) {
     }
 }
