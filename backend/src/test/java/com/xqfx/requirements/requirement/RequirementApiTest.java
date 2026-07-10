@@ -182,4 +182,79 @@ class RequirementApiTest {
                                 """))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void createsIncompleteDraftAndReadsItBack() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements/drafts")
+                        .contentType("application/json")
+                        .content("""
+                                {"title":"未完成草稿"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.saveType").value("DRAFT"))
+                .andExpect(jsonPath("$.status").doesNotExist())
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(get("/api/requirements/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("未完成草稿"))
+                .andExpect(jsonPath("$.saveType").value("DRAFT"));
+    }
+
+    @Test
+    void updatesDraftWithoutFormalFieldValidation() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements/drafts")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(put("/api/requirements/{id}/draft", id)
+                        .contentType("application/json")
+                        .content("""
+                                {"title":"补充后的草稿","content":"尚未填写其他必填字段"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("补充后的草稿"))
+                .andExpect(jsonPath("$.content").value("尚未填写其他必填字段"))
+                .andExpect(jsonPath("$.saveType").value("DRAFT"));
+    }
+
+    @Test
+    void convertsCompleteDraftToSubmittedRequirement() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements/drafts")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(put("/api/requirements/{id}", id)
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"吴迪","department":"客服部","title":"草稿转正式","type":"REQUIREMENT","content":"这是一条已经填写完整的正式需求"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.saveType").value("SUBMITTED"))
+                .andExpect(jsonPath("$.status").value("PENDING_EVALUATION"));
+    }
+
+    @Test
+    void filtersRequirementsBySaveType() throws Exception {
+        mockMvc.perform(post("/api/requirements/drafts")
+                .contentType("application/json")
+                .content("{\"title\":\"草稿筛选\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/requirements")
+                .contentType("application/json")
+                .content("""
+                        {"requesterName":"刘洋","department":"采购部","title":"正式筛选","type":"BUG","content":"用于验证保存类型筛选"}
+                        """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/requirements").param("saveType", "DRAFT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.saveType == 'DRAFT')]").isNotEmpty())
+                .andExpect(jsonPath("$[?(@.saveType != 'DRAFT')]").isEmpty());
+    }
 }
