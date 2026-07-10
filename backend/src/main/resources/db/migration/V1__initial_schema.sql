@@ -55,5 +55,7 @@ CREATE TABLE attachments (
   content_type VARCHAR(100) NOT NULL,
   size_bytes BIGINT NOT NULL,
   created_at DATETIME(6) NOT NULL,
+  deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  deleted_at DATETIME(6) NULL,
   CONSTRAINT fk_attachments_requirement FOREIGN KEY (requirement_id) REFERENCES requirements(id)
 );

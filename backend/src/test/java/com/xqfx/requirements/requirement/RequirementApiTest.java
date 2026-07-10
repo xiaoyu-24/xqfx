@@ -411,4 +411,17 @@ class RequirementApiTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Content-Type", "application/pdf"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().bytes(new byte[] {4, 5, 6}));
     }
+
+    @Test
+    void softDeletesAttachment() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"删除附件用户","department":"研发部","title":"删除附件","type":"BUG","content":"验证附件软删除"}
+                """)).andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var uploaded = mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId).file(new org.springframework.mock.web.MockMultipartFile("file", "删除.pdf", "application/pdf", new byte[] {9}))).andReturn();
+        var attachmentId = com.jayway.jsonpath.JsonPath.read(uploaded.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(delete("/api/attachments/{id}", attachmentId)).andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/attachments/{id}", attachmentId)).andExpect(status().isNotFound());
+    }
 }

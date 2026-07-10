@@ -6,6 +6,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/attachments")
@@ -13,4 +16,5 @@ class AttachmentController {
     private final AttachmentService attachments;
     AttachmentController(AttachmentService attachments) { this.attachments=attachments; }
     @GetMapping("/{id}") ResponseEntity<org.springframework.core.io.Resource> download(@PathVariable Long id) { var file=attachments.download(id); return ResponseEntity.ok().contentType(MediaType.parseMediaType(file.contentType())).header("Content-Disposition", "attachment; filename=\"" + file.originalName() + "\"").body(file.resource()); }
+    @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id) { attachments.delete(id); }
 }
