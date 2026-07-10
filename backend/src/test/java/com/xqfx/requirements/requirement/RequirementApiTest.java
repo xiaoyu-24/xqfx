@@ -392,6 +392,21 @@ class RequirementApiTest {
     }
 
     @Test
+    void filtersRequirementsByOverlappingPeriod() throws Exception {
+        mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"周期用户","department":"研发部","title":"周期筛选","type":"REQUIREMENT","content":"验证周期重叠筛选","periodStartDate":"2026-07-10","periodEndDate":"2026-07-20"}
+                """)).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"其他周期","department":"研发部","title":"其他周期","type":"REQUIREMENT","content":"不应命中","periodStartDate":"2026-08-01","periodEndDate":"2026-08-10"}
+                """)).andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/requirements/page").param("page", "0").param("size", "20").param("periodOverlapStart", "2026-07-15").param("periodOverlapEnd", "2026-07-25"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.title == '周期筛选')]").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.title == '其他周期')]").isEmpty());
+    }
+
+    @Test
     void uploadsSupportedAttachmentForRequirement() throws Exception {
         var created = mockMvc.perform(post("/api/requirements")
                         .contentType("application/json")
