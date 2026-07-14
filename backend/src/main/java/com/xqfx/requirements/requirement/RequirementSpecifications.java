@@ -29,5 +29,13 @@ final class RequirementSpecifications {
         return specification;
     }
 
+    static Specification<RequirementEntity> management() {
+        return (root, query, criteriaBuilder) -> {
+            var active = criteriaBuilder.isFalse(root.get("deleted"));
+            var terminal = root.get("status").in(RequirementStatus.COMPLETED, RequirementStatus.CLOSED, RequirementStatus.REJECTED);
+            return criteriaBuilder.and(active, criteriaBuilder.or(criteriaBuilder.isNull(root.get("status")), criteriaBuilder.not(terminal)));
+        };
+    }
+
     private static boolean hasText(String value) { return value != null && !value.isBlank(); }
 }

@@ -16,6 +16,7 @@ type VersionItem = { id: number; name: string; status: string }
 type Item = {
   id: number; title: string; type: string | null; requesterName: string | null; department: string | null; status: string | null
   submittedAt: string | null; systemId: number | null; targetVersionId: number | null; targetVersionName?: string | null; periodStartDate: string | null; periodEndDate: string | null
+  completedAt?: string | null; handledBy?: string | null; completionDescription?: string | null
   content?: string | null; saveType?: string; updatedAt?: string | null; statusUpdatedAt?: string | null; recordVersion?: number
 }
 type Attachment = { id: number; originalName: string; contentType: string; sizeBytes: number }
@@ -27,6 +28,10 @@ const filters = reactive({
 const systems = ref<SystemItem[]>([])
 const versions = ref<VersionItem[]>([])
 const items = ref<Item[]>([])
+const managementItems = ref<Item[]>([])
+const managementTotal = ref(0)
+const managementTotalPages = ref(0)
+const managementLoading = ref(false)
 const total = ref(0)
 const totalPages = ref(0)
 const currentPage = ref(0)
@@ -36,6 +41,9 @@ const selectedRequirement = ref<Item | null>(null)
 const detailAttachments = ref<Attachment[]>([])
 const detailSelectedFiles = ref<File[]>([])
 const detailUploading = ref(false)
+const processingId = ref<number | null>(null)
+const processingLoading = ref(false)
+const processingForm = reactive({ status: 'PENDING_EVALUATION', completedAt: '', handledBy: '', completionDescription: '', recordVersion: 0 })
 const editingId = ref<number | null>(null)
 const editingSaveType = ref('SUBMITTED')
 const editVersions = ref<VersionItem[]>([])
@@ -46,6 +54,16 @@ const typeLabel: Record<string, string> = { BUG: 'BUG', REQUIREMENT: '需求' }
 const saveTypeLabel: Record<string, string> = { SUBMITTED: '正式需求', DRAFT: '草稿' }
 const systemName = (id: number | null) => id === null ? '暂无系统' : systems.value.find((system) => system.id === id)?.name ?? `系统 #${id}`
 const versionName = (id: number | null, name?: string | null) => id === null ? '—' : name ?? versions.value.find((version) => version.id === id)?.name ?? `版本 #${id}`
+const formatShanghai = (value: string | null | undefined) => {
+  if (!value) return '—'
+  const localValue = value.replace('T', ' ')
+  const match = localValue.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/)
+  return match?.[1] ?? localValue
+}
+const toDateTimeLocal = (value: string | null | undefined) => {
+  const formatted = formatShanghai(value)
+  return formatted === '—' ? '' : formatted.replace(' ', 'T').slice(0, 16)
+}
 
 const loadSystems = async () => {
   try {
@@ -96,6 +114,20 @@ const query = async (page = 0) => {
   }
 }
 
+const queryManagement = async () => {
+  managementLoading.value = true
+  try {
+    const { data } = await api.get('/requirements/management', { params: { page: 0, size: pageSize } })
+    managementItems.value = data.content ?? []
+    managementTotal.value = data.totalElements ?? 0
+    managementTotalPages.value = data.totalPages ?? 0
+  } catch {
+    ElMessage.error('加载管理需求失败')
+  } finally {
+    managementLoading.value = false
+  }
+}
+
 const applyPresetSystemFilter = async (systemId: number | null) => {
   if (systemId === null) return
   filters.systemId = String(systemId)
@@ -114,6 +146,45 @@ const reset = () => {
   Object.assign(filters, { keyword: '', systemId: '', targetVersionId: '', department: '', requesterName: '', type: '', status: '', saveType: '', submittedFrom: '', submittedTo: '', periodOverlapStart: '', periodOverlapEnd: '' })
   versions.value = []
   query()
+}
+
+const openProcessing = async (item: Item) => {
+  try {
+    const { data } = await api.get(`/requirements/${item.id}`)
+    processingId.value = item.id
+    Object.assign(processingForm, {
+      status: data.status ?? 'PENDING_EVALUATION',
+      completedAt: toDateTimeLocal(data.completedAt),
+      handledBy: data.handledBy ?? '',
+      completionDescription: data.completionDescription ?? '',
+      recordVersion: data.recordVersion ?? item.recordVersion ?? 0,
+    })
+  } catch {
+    ElMessage.error('加载处理信息失败')
+  }
+}
+
+const saveProcessing = async () => {
+  if (processingId.value === null) return
+  processingLoading.value = true
+  try {
+    await api.patch(`/requirements/${processingId.value}/processing`, {
+      status: processingForm.status,
+      completedAt: processingForm.completedAt ? `${processingForm.completedAt}:00` : null,
+      handledBy: processingForm.handledBy.trim() || null,
+      completionDescription: processingForm.completionDescription,
+      recordVersion: processingForm.recordVersion,
+    })
+    processingId.value = null
+    ElMessage.success('处理信息已保存')
+    await Promise.all([queryManagement(), query(currentPage.value)])
+  } catch (error: unknown) {
+    const status = (error as { response?: { status?: number } }).response?.status
+    if (status === 409) ElMessage.error('需求已被其他人修改，请刷新后重试')
+    else ElMessage.error('保存处理信息失败')
+  } finally {
+    processingLoading.value = false
+  }
 }
 
 const viewDetails = async (id: number) => {
@@ -169,7 +240,7 @@ const deleteRequirement = async (item: Item) => {
     await api.delete(`/requirements/${item.id}`)
     if (selectedRequirement.value?.id === item.id) selectedRequirement.value = null
     ElMessage.success('需求已删除')
-    await query(currentPage.value)
+    await Promise.all([query(currentPage.value), queryManagement()])
   } catch {
     ElMessage.error('删除需求失败')
   }
@@ -221,7 +292,7 @@ const saveEdit = async (submitDraft = false) => {
     if (data?.id) selectedRequirement.value = data
     editingId.value = null
     ElMessage.success(isDraftSave ? '草稿已更新' : submitDraft ? '草稿已正式提交' : '需求已更新')
-    await query(currentPage.value)
+    await Promise.all([query(currentPage.value), queryManagement()])
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status
     if (status === 409) ElMessage.error('需求已被其他人修改，请刷新后重试')
@@ -229,7 +300,11 @@ const saveEdit = async (submitDraft = false) => {
   }
 }
 
-onMounted(loadSystems)
+onMounted(async () => {
+  await loadSystems()
+  if (!props.presetSystemId) await query()
+  await queryManagement()
+})
 </script>
 
 <template>
@@ -253,11 +328,35 @@ onMounted(loadSystems)
       <table>
         <thead><tr><th>类型</th><th>需求标题</th><th>所属系统 / 版本</th><th>填写人 / 部门</th><th>周期</th><th>状态</th><th>填写时间</th><th>操作</th></tr></thead>
         <tbody>
-          <tr v-for="item in items" :key="item.id"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item.targetVersionId, item.targetVersionName) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.periodStartDate && item.periodEndDate ? `${item.periodStartDate} 至 ${item.periodEndDate}` : '—' }}</td><td>{{ item.status ? statusLabel[item.status] : saveTypeLabel[item.saveType ?? 'DRAFT'] }}</td><td>{{ item.submittedAt || '—' }}</td><td class="row-actions"><button type="button" :data-test="`view-${item.id}`" @click="viewDetails(item.id)">查看详情</button><button type="button" :data-test="`edit-${item.id}`" @click="openEdit(item.id)">编辑</button><button class="danger" type="button" :data-test="`delete-${item.id}`" @click="deleteRequirement(item)">删除</button></td></tr>
-          <tr v-if="!loading && items.length === 0"><td colspan="8" class="empty">请设置筛选条件并查询需求列表</td></tr>
+          <tr v-for="item in items" :key="item.id"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item.targetVersionId, item.targetVersionName) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.periodStartDate && item.periodEndDate ? `${item.periodStartDate} 至 ${item.periodEndDate}` : '—' }}</td><td>{{ item.status ? statusLabel[item.status] : saveTypeLabel[item.saveType ?? 'DRAFT'] }}</td><td>{{ formatShanghai(item.submittedAt || item.updatedAt) }}</td><td class="row-actions"><button type="button" :data-test="`view-${item.id}`" @click="viewDetails(item.id)">查看详情</button><button type="button" :data-test="`edit-${item.id}`" @click="openEdit(item.id)">编辑</button><button class="danger" type="button" :data-test="`delete-${item.id}`" @click="deleteRequirement(item)">删除</button></td></tr>
+          <tr v-if="!loading && items.length === 0"><td colspan="8" class="empty">暂无需求</td></tr>
         </tbody>
       </table>
     </div>
+    <section class="management-section" data-test="management-section">
+      <div class="detail-header"><h2>管理需求</h2><span class="muted">共 {{ managementTotal }} 条</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类型</th><th>需求标题</th><th>所属系统 / 版本</th><th>填写人 / 部门</th><th>当前状态</th><th>填写时间</th><th>最后修改</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="item in managementItems" :key="`management-${item.id}`"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item.targetVersionId, item.targetVersionName) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.status ? statusLabel[item.status] : '暂存草稿' }}</td><td>{{ formatShanghai(item.submittedAt || item.updatedAt) }}</td><td>{{ formatShanghai(item.updatedAt) }}</td><td><button type="button" :data-test="`manage-${item.id}`" @click="openProcessing(item)">填写处理情况</button></td></tr>
+            <tr v-if="!managementLoading && managementItems.length === 0"><td colspan="8" class="empty">暂无待处理需求</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-if="processingId !== null" class="processing-form-wrap">
+        <form class="requirement-edit" data-test="processing-form" @submit.prevent="saveProcessing">
+          <div class="detail-header"><h3>填写需求完成情况</h3><button class="secondary" type="button" @click="processingId = null">取消</button></div>
+          <div class="form-grid">
+            <label>需求状态 <select v-model="processingForm.status" data-test="processing-status"><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
+            <label>完成时间 <input v-model="processingForm.completedAt" data-test="processing-completed-at" type="datetime-local"></label>
+            <label>处理人 <input v-model="processingForm.handledBy" data-test="processing-handler" placeholder="请输入处理人"></label>
+            <label class="full-width">完成情况 <textarea v-model="processingForm.completionDescription" data-test="processing-description" rows="6" placeholder="请输入处理结果、验证情况等"></textarea></label>
+          </div>
+          <div class="form-actions"><button class="primary" type="submit" data-test="processing-save" :disabled="processingLoading">{{ processingLoading ? '保存中…' : '保存处理情况' }}</button></div>
+        </form>
+      </div>
+    </section>
     <form v-if="editingId !== null" class="requirement-edit" data-test="edit-form" @submit.prevent="saveEdit()">
       <div class="detail-header"><h2>{{ editingSaveType === 'DRAFT' ? '编辑草稿' : '编辑需求' }}</h2><button class="secondary" type="button" @click="editingId = null">取消</button></div>
       <div class="form-grid">
@@ -274,8 +373,9 @@ onMounted(loadSystems)
     </form>
     <article v-if="selectedRequirement" class="requirement-detail">
       <div class="detail-header"><h2>{{ selectedRequirement.title || '未命名草稿' }}</h2><button class="secondary" type="button" @click="selectedRequirement = null; detailAttachments = []">关闭详情</button></div>
-      <dl><div><dt>类型</dt><dd>{{ selectedRequirement.type ? typeLabel[selectedRequirement.type] : '—' }}</dd></div><div><dt>状态</dt><dd>{{ selectedRequirement.status ? statusLabel[selectedRequirement.status] : '草稿' }}</dd></div><div><dt>所属系统</dt><dd>{{ systemName(selectedRequirement.systemId) }}</dd></div><div><dt>目标版本</dt><dd>{{ versionName(selectedRequirement.targetVersionId, selectedRequirement.targetVersionName) }}</dd></div><div><dt>填写人 / 部门</dt><dd>{{ selectedRequirement.requesterName || '—' }} / {{ selectedRequirement.department || '—' }}</dd></div><div><dt>填写时间</dt><dd>{{ selectedRequirement.submittedAt || '—' }}</dd></div><div><dt>需求周期</dt><dd>{{ selectedRequirement.periodStartDate && selectedRequirement.periodEndDate ? `${selectedRequirement.periodStartDate} 至 ${selectedRequirement.periodEndDate}` : '—' }}</dd></div><div><dt>最后修改</dt><dd>{{ selectedRequirement.updatedAt || '—' }}</dd></div></dl>
+      <dl><div><dt>类型</dt><dd>{{ selectedRequirement.type ? typeLabel[selectedRequirement.type] : '—' }}</dd></div><div><dt>状态</dt><dd>{{ selectedRequirement.status ? statusLabel[selectedRequirement.status] : '草稿' }}</dd></div><div><dt>所属系统</dt><dd>{{ systemName(selectedRequirement.systemId) }}</dd></div><div><dt>目标版本</dt><dd>{{ versionName(selectedRequirement.targetVersionId, selectedRequirement.targetVersionName) }}</dd></div><div><dt>填写人 / 部门</dt><dd>{{ selectedRequirement.requesterName || '—' }} / {{ selectedRequirement.department || '—' }}</dd></div><div><dt>填写时间</dt><dd>{{ formatShanghai(selectedRequirement.submittedAt || selectedRequirement.updatedAt) }}</dd></div><div><dt>需求周期</dt><dd>{{ selectedRequirement.periodStartDate && selectedRequirement.periodEndDate ? `${selectedRequirement.periodStartDate} 至 ${selectedRequirement.periodEndDate}` : '—' }}</dd></div><div><dt>最后修改</dt><dd>{{ formatShanghai(selectedRequirement.updatedAt) }}</dd></div><div v-if="selectedRequirement.completedAt"><dt>完成时间</dt><dd>{{ formatShanghai(selectedRequirement.completedAt) }}</dd></div><div v-if="selectedRequirement.handledBy"><dt>处理人</dt><dd>{{ selectedRequirement.handledBy }}</dd></div></dl>
       <h3>需求内容</h3><p class="detail-content">{{ selectedRequirement.content || '—' }}</p>
+      <div v-if="selectedRequirement.completionDescription"><h3>完成情况</h3><p class="detail-content">{{ selectedRequirement.completionDescription }}</p></div>
       <h3>附件</h3><div class="attachment-upload"><input data-test="detail-attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectDetailFiles"><button class="secondary" type="button" data-test="detail-attachment-upload" :disabled="detailUploading || detailSelectedFiles.length === 0" @click="uploadDetailAttachments">{{ detailUploading ? '上传中…' : '上传附件' }}</button></div><ul v-if="detailAttachments.length" class="attachment-list"><li v-for="attachment in detailAttachments" :key="attachment.id"><a :data-test="`attachment-download-${attachment.id}`" :href="`/api/attachments/${attachment.id}`" :download="attachment.originalName">{{ attachment.originalName }}</a>（{{ attachment.sizeBytes }} 字节）<img v-if="attachment.contentType.startsWith('image/')" :data-test="`attachment-preview-${attachment.id}`" :src="`/api/attachments/${attachment.id}`" :alt="`${attachment.originalName} 预览`"><button class="danger" type="button" @click="deleteAttachment(attachment)">删除</button></li></ul><p v-else>暂无附件</p>
     </article>
     <div class="pagination-placeholder">共 {{ total }} 条　<button type="button" :disabled="loading || currentPage === 0" @click="query(currentPage - 1)">上一页</button>　第 {{ currentPage + 1 }} / {{ Math.max(totalPages, 1) }} 页　<button type="button" :disabled="loading || currentPage + 1 >= totalPages" @click="query(currentPage + 1)">下一页</button></div>

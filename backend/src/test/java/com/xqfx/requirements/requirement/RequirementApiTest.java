@@ -572,4 +572,60 @@ class RequirementApiTest {
         mockMvc.perform(delete("/api/attachments/{id}", attachmentId)).andExpect(status().isNoContent());
         mockMvc.perform(get("/api/attachments/{id}", attachmentId)).andExpect(status().isNotFound());
     }
+
+    @Test
+    void managementListIncludesDraftsAndExcludesTerminalRequirements() throws Exception {
+        mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"待处理用户","department":"研发部","title":"待处理需求","type":"BUG","content":"需要继续跟进"}
+                """)).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/requirements/drafts").contentType("application/json").content("""
+                {"title":"待处理草稿"}
+                """)).andExpect(status().isCreated());
+        var completedDraft = mockMvc.perform(post("/api/requirements/drafts").contentType("application/json").content("""
+                {"title":"已完成草稿"}
+                """)).andReturn();
+        var completedDraftId = com.jayway.jsonpath.JsonPath.read(completedDraft.getResponse().getContentAsString(), "$.id").toString();
+        var completedDraftVersion = com.jayway.jsonpath.JsonPath.read(completedDraft.getResponse().getContentAsString(), "$.recordVersion").toString();
+        mockMvc.perform(patch("/api/requirements/{id}/processing", completedDraftId).contentType("application/json").content("""
+                        {"status":"COMPLETED","completedAt":"2026-07-14T09:00:00","handledBy":"处理人","completionDescription":"草稿已处理","recordVersion":%s}
+                        """.formatted(completedDraftVersion)))
+                .andExpect(status().isOk());
+        var completed = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"已完成用户","department":"研发部","title":"已完成需求","type":"REQUIREMENT","content":"不应出现在管理列表"}
+                """)).andReturn();
+        var completedId = com.jayway.jsonpath.JsonPath.read(completed.getResponse().getContentAsString(), "$.id").toString();
+        var completedVersion = com.jayway.jsonpath.JsonPath.read(completed.getResponse().getContentAsString(), "$.recordVersion").toString();
+        mockMvc.perform(patch("/api/requirements/{id}/status", completedId).contentType("application/json")
+                        .content("{\"status\":\"COMPLETED\",\"recordVersion\":" + completedVersion + "}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/requirements/management").param("page", "0").param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.title == '待处理需求')]").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.title == '待处理草稿')]").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.title == '已完成草稿')]").isEmpty())
+                .andExpect(jsonPath("$.content[?(@.title == '已完成需求')]").isEmpty());
+    }
+
+    @Test
+    void updatesProcessingDetailsAndRemovesCompletedRequirementFromManagement() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"处理用户","department":"研发部","title":"待填写完成情况","type":"REQUIREMENT","content":"验证处理信息保存"}
+                """)).andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var recordVersion = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.recordVersion").toString();
+
+        mockMvc.perform(patch("/api/requirements/{id}/processing", id).contentType("application/json").content("""
+                        {"status":"COMPLETED","completedAt":"2026-07-14T09:30:00","handledBy":"李明","completionDescription":"已完成开发并验证","recordVersion":%s}
+                        """.formatted(recordVersion)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.completedAt").value("2026-07-14T09:30:00"))
+                .andExpect(jsonPath("$.handledBy").value("李明"))
+                .andExpect(jsonPath("$.completionDescription").value("已完成开发并验证"));
+
+        mockMvc.perform(get("/api/requirements/management").param("page", "0").param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id == %s)]".formatted(id)).isEmpty());
+    }
 }

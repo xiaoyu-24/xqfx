@@ -21,7 +21,7 @@ mvn clean package
 java -jar target\requirements-platform-0.1.0-SNAPSHOT.jar
 ```
 
-Flyway 会自动执行 V1–V4 迁移。应用账号需要数据库、表和索引的创建/变更权限；日常运行时建议改用仅数据读写权限的账号。
+Flyway 会自动执行 V1–V7 迁移，包括需求处理信息字段。应用账号需要数据库、表和索引的创建/变更权限；日常运行时建议改用仅数据读写权限的账号。
 
 启动完成后访问 `http://127.0.0.1:8080/api/health`，应返回 `{"status":"UP"}`。附件目录应由运行账号拥有读写权限；上传时会保留临时文件所需空间，并按 `ATTACHMENTS_MINIMUM_FREE_SPACE_BYTES` 预留剩余容量。
 
