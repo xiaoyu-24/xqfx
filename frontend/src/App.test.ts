@@ -5,11 +5,10 @@ import App from './App.vue'
 
 vi.mock('./components/RequirementForm.vue', () => ({
   default: defineComponent({
-    emits: ['back', 'dirty-change', 'submitted'],
+    emits: ['dirty-change', 'submitted'],
     template: `
       <div>
         <button type="button" data-test="make-dirty" @click="$emit('dirty-change', true)">make dirty</button>
-        <button type="button" data-test="back" @click="$emit('back')">back</button>
         <button type="button" data-test="submitted" @click="$emit('submitted')">submitted</button>
         <p>RequirementForm Stub</p>
       </div>
@@ -77,14 +76,6 @@ describe('App', () => {
     expect(confirm).toHaveBeenCalledWith('当前内容尚未保存，确定离开填写页吗？')
     expect(wrapper.text()).toContain('RequirementForm Stub')
     expect(wrapper.text()).not.toContain('RequirementList Stub')
-  })
-
-  it('returns to the list page after the create page emits back', async () => {
-    const wrapper = mount(App)
-
-    await wrapper.get('[data-test="back"]').trigger('click')
-
-    expect(wrapper.text()).toContain('RequirementList Stub')
   })
 
   it('opens the requirement list with a system preset from system management', async () => {

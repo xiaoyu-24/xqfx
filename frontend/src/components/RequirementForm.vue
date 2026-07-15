@@ -6,7 +6,6 @@ import { api } from '../api'
 type SystemMode = 'existing' | 'new' | 'none'
 
 const emit = defineEmits<{
-  back: []
   'dirty-change': [value: boolean]
   submitted: []
 }>()
@@ -142,17 +141,10 @@ const submit = async (draft: boolean) => {
   } finally { submitting.value = false }
 }
 
-const goBack = () => {
-  if (isDirty.value && !window.confirm('当前内容尚未保存，确定返回吗？')) return
-  emit('back')
-}
 </script>
 
 <template>
   <form class="requirement-form" @submit.prevent="submit(false)">
-    <div class="form-toolbar">
-      <button class="secondary" type="button" data-test="back" :disabled="submitting" @click="goBack">返回</button>
-    </div>
     <div class="form-grid">
       <label>姓名 <input v-model="form.requesterName" required placeholder="请输入姓名"></label>
       <label>部门 <input v-model="form.department" required placeholder="请输入部门"></label>

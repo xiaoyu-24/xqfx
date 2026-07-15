@@ -15,7 +15,6 @@ const pages: Array<{ key: PageKey; label: string; description: string }> = [
 ]
 
 const activePage = ref<PageKey>('create')
-const lastNonCreatePage = ref<PageKey>('list')
 const createFormDirty = ref(false)
 const listPresetSystemId = ref<number | null>(null)
 const listPresetRequestKey = ref(0)
@@ -31,13 +30,7 @@ const navigateTo = (page: PageKey, skipGuard = false, preserveListPreset = false
     if (!window.confirm('当前内容尚未保存，确定离开填写页吗？')) return
   }
   if (!preserveListPreset) clearListPreset()
-  if (page !== 'create') lastNonCreatePage.value = page
   activePage.value = page
-}
-
-const handleCreateBack = () => {
-  createFormDirty.value = false
-  navigateTo(lastNonCreatePage.value, true)
 }
 
 const handleCreateSubmitted = () => {
@@ -76,7 +69,6 @@ const handleViewSystemRequirements = (systemId: number) => {
       <section class="page-placeholder">
         <RequirementForm
           v-if="activePage === 'create'"
-          @back="handleCreateBack"
           @dirty-change="createFormDirty = $event"
           @submitted="handleCreateSubmitted"
         />

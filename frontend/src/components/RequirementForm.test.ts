@@ -82,14 +82,10 @@ describe('RequirementForm', () => {
     expect(post).not.toHaveBeenCalled()
   })
 
-  it('asks for confirmation before returning when the form is dirty', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('does not show a return button above the form', () => {
     const wrapper = mount(RequirementForm)
-    await wrapper.find('input[placeholder="请输入姓名"]').setValue('林琳')
 
-    await wrapper.get('[data-test="back"]').trigger('click')
-
-    expect(confirm).toHaveBeenCalledWith('当前内容尚未保存，确定返回吗？')
-    expect(wrapper.emitted('back')).toHaveLength(1)
+    expect(wrapper.find('[data-test="back"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('返回')
   })
 })
