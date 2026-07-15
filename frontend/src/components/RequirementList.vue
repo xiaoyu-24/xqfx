@@ -28,10 +28,6 @@ const filters = reactive({
 const systems = ref<SystemItem[]>([])
 const versions = ref<VersionItem[]>([])
 const items = ref<Item[]>([])
-const managementItems = ref<Item[]>([])
-const managementTotal = ref(0)
-const managementTotalPages = ref(0)
-const managementLoading = ref(false)
 const total = ref(0)
 const totalPages = ref(0)
 const currentPage = ref(0)
@@ -41,9 +37,6 @@ const selectedRequirement = ref<Item | null>(null)
 const detailAttachments = ref<Attachment[]>([])
 const detailSelectedFiles = ref<File[]>([])
 const detailUploading = ref(false)
-const processingId = ref<number | null>(null)
-const processingLoading = ref(false)
-const processingForm = reactive({ status: 'PENDING_EVALUATION', completedAt: '', handledBy: '', completionDescription: '', recordVersion: 0 })
 const editingId = ref<number | null>(null)
 const editingSaveType = ref('SUBMITTED')
 const editVersions = ref<VersionItem[]>([])
@@ -60,11 +53,6 @@ const formatShanghai = (value: string | null | undefined) => {
   const match = localValue.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/)
   return match?.[1] ?? localValue
 }
-const toDateTimeLocal = (value: string | null | undefined) => {
-  const formatted = formatShanghai(value)
-  return formatted === '—' ? '' : formatted.replace(' ', 'T').slice(0, 16)
-}
-
 const loadSystems = async () => {
   try {
     const { data } = await api.get('/systems')
@@ -114,20 +102,6 @@ const query = async (page = 0) => {
   }
 }
 
-const queryManagement = async () => {
-  managementLoading.value = true
-  try {
-    const { data } = await api.get('/requirements/management', { params: { page: 0, size: pageSize } })
-    managementItems.value = data.content ?? []
-    managementTotal.value = data.totalElements ?? 0
-    managementTotalPages.value = data.totalPages ?? 0
-  } catch {
-    ElMessage.error('加载管理需求失败')
-  } finally {
-    managementLoading.value = false
-  }
-}
-
 const applyPresetSystemFilter = async (systemId: number | null) => {
   if (systemId === null) return
   filters.systemId = String(systemId)
@@ -146,45 +120,6 @@ const reset = () => {
   Object.assign(filters, { keyword: '', systemId: '', targetVersionId: '', department: '', requesterName: '', type: '', status: '', saveType: '', submittedFrom: '', submittedTo: '', periodOverlapStart: '', periodOverlapEnd: '' })
   versions.value = []
   query()
-}
-
-const openProcessing = async (item: Item) => {
-  try {
-    const { data } = await api.get(`/requirements/${item.id}`)
-    processingId.value = item.id
-    Object.assign(processingForm, {
-      status: data.status ?? 'PENDING_EVALUATION',
-      completedAt: toDateTimeLocal(data.completedAt),
-      handledBy: data.handledBy ?? '',
-      completionDescription: data.completionDescription ?? '',
-      recordVersion: data.recordVersion ?? item.recordVersion ?? 0,
-    })
-  } catch {
-    ElMessage.error('加载处理信息失败')
-  }
-}
-
-const saveProcessing = async () => {
-  if (processingId.value === null) return
-  processingLoading.value = true
-  try {
-    await api.patch(`/requirements/${processingId.value}/processing`, {
-      status: processingForm.status,
-      completedAt: processingForm.completedAt ? `${processingForm.completedAt}:00` : null,
-      handledBy: processingForm.handledBy.trim() || null,
-      completionDescription: processingForm.completionDescription,
-      recordVersion: processingForm.recordVersion,
-    })
-    processingId.value = null
-    ElMessage.success('处理信息已保存')
-    await Promise.all([queryManagement(), query(currentPage.value)])
-  } catch (error: unknown) {
-    const status = (error as { response?: { status?: number } }).response?.status
-    if (status === 409) ElMessage.error('需求已被其他人修改，请刷新后重试')
-    else ElMessage.error('保存处理信息失败')
-  } finally {
-    processingLoading.value = false
-  }
 }
 
 const viewDetails = async (id: number) => {
@@ -240,7 +175,7 @@ const deleteRequirement = async (item: Item) => {
     await api.delete(`/requirements/${item.id}`)
     if (selectedRequirement.value?.id === item.id) selectedRequirement.value = null
     ElMessage.success('需求已删除')
-    await Promise.all([query(currentPage.value), queryManagement()])
+    await query(currentPage.value)
   } catch {
     ElMessage.error('删除需求失败')
   }
@@ -292,7 +227,7 @@ const saveEdit = async (submitDraft = false) => {
     if (data?.id) selectedRequirement.value = data
     editingId.value = null
     ElMessage.success(isDraftSave ? '草稿已更新' : submitDraft ? '草稿已正式提交' : '需求已更新')
-    await Promise.all([query(currentPage.value), queryManagement()])
+    await query(currentPage.value)
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status
     if (status === 409) ElMessage.error('需求已被其他人修改，请刷新后重试')
@@ -303,7 +238,6 @@ const saveEdit = async (submitDraft = false) => {
 onMounted(async () => {
   await loadSystems()
   if (!props.presetSystemId) await query()
-  await queryManagement()
 })
 </script>
 
@@ -333,30 +267,6 @@ onMounted(async () => {
         </tbody>
       </table>
     </div>
-    <section class="management-section" data-test="management-section">
-      <div class="detail-header"><h2>管理需求</h2><span class="muted">共 {{ managementTotal }} 条</span></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>类型</th><th>需求标题</th><th>所属系统 / 版本</th><th>填写人 / 部门</th><th>当前状态</th><th>填写时间</th><th>最后修改</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="item in managementItems" :key="`management-${item.id}`"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item.targetVersionId, item.targetVersionName) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.status ? statusLabel[item.status] : '暂存草稿' }}</td><td>{{ formatShanghai(item.submittedAt || item.updatedAt) }}</td><td>{{ formatShanghai(item.updatedAt) }}</td><td><button type="button" :data-test="`manage-${item.id}`" @click="openProcessing(item)">填写处理情况</button></td></tr>
-            <tr v-if="!managementLoading && managementItems.length === 0"><td colspan="8" class="empty">暂无待处理需求</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div v-if="processingId !== null" class="processing-form-wrap">
-        <form class="requirement-edit" data-test="processing-form" @submit.prevent="saveProcessing">
-          <div class="detail-header"><h3>填写需求完成情况</h3><button class="secondary" type="button" @click="processingId = null">取消</button></div>
-          <div class="form-grid">
-            <label>需求状态 <select v-model="processingForm.status" data-test="processing-status"><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
-            <label>完成时间 <input v-model="processingForm.completedAt" data-test="processing-completed-at" type="datetime-local"></label>
-            <label>处理人 <input v-model="processingForm.handledBy" data-test="processing-handler" placeholder="请输入处理人"></label>
-            <label class="full-width">完成情况 <textarea v-model="processingForm.completionDescription" data-test="processing-description" rows="6" placeholder="请输入处理结果、验证情况等"></textarea></label>
-          </div>
-          <div class="form-actions"><button class="primary" type="submit" data-test="processing-save" :disabled="processingLoading">{{ processingLoading ? '保存中…' : '保存处理情况' }}</button></div>
-        </form>
-      </div>
-    </section>
     <form v-if="editingId !== null" class="requirement-edit" data-test="edit-form" @submit.prevent="saveEdit()">
       <div class="detail-header"><h2>{{ editingSaveType === 'DRAFT' ? '编辑草稿' : '编辑需求' }}</h2><button class="secondary" type="button" @click="editingId = null">取消</button></div>
       <div class="form-grid">

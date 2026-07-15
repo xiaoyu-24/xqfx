@@ -2,8 +2,8 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RequirementList from './RequirementList.vue'
 
-const { get, post, put, patch, remove } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), remove: vi.fn() }))
-vi.mock('../api', () => ({ api: { get, post, put, patch, delete: remove } }))
+const { get, post, put, remove } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), remove: vi.fn() }))
+vi.mock('../api', () => ({ api: { get, post, put, delete: remove } }))
 
 describe('RequirementList', () => {
   beforeEach(() => {
@@ -11,7 +11,6 @@ describe('RequirementList', () => {
     get.mockResolvedValue({ data: { content: [], totalElements: 0, totalPages: 0 } })
     post.mockResolvedValue({ data: { id: 100, originalName: '补传.pdf', contentType: 'application/pdf', sizeBytes: 3 } })
     put.mockResolvedValue({ data: {} })
-    patch.mockResolvedValue({ data: {} })
     remove.mockResolvedValue({})
   })
 
@@ -24,53 +23,30 @@ describe('RequirementList', () => {
     expect(wrapper.text()).toContain('查询')
   })
 
-  it('loads the full requirement list and management list when mounted', async () => {
+  it('loads only the full requirement list when mounted', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/systems') return Promise.resolve({ data: [] })
       if (url === '/requirements/page') return Promise.resolve({ data: { content: [], totalElements: 0, totalPages: 0 } })
-      if (url === '/requirements/management') return Promise.resolve({ data: { content: [], totalElements: 0, totalPages: 0 } })
       return Promise.resolve({ data: [] })
     })
-    mount(RequirementList)
+    const wrapper = mount(RequirementList)
     await flushPromises()
 
     expect(get).toHaveBeenCalledWith('/requirements/page', { params: { page: 0, size: 20 } })
-    expect(get).toHaveBeenCalledWith('/requirements/management', { params: { page: 0, size: 20 } })
+    expect(get).not.toHaveBeenCalledWith('/requirements/management', expect.anything())
+    expect(wrapper.find('[data-test="management-section"]').exists()).toBe(false)
   })
 
   it('formats requirement filling time in Shanghai display format', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/systems') return Promise.resolve({ data: [] })
       if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 21, title: '上海时间需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: '2026-07-14T09:05:06.123456', systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
-      if (url === '/requirements/management') return Promise.resolve({ data: { content: [], totalElements: 0, totalPages: 0 } })
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
     await flushPromises()
 
     expect(wrapper.text()).toContain('2026-07-14 09:05:06')
-  })
-
-  it('updates management requirement processing details', async () => {
-    get.mockImplementation((url: string) => {
-      if (url === '/systems') return Promise.resolve({ data: [] })
-      if (url === '/requirements/page') return Promise.resolve({ data: { content: [], totalElements: 0, totalPages: 0 } })
-      if (url === '/requirements/management') return Promise.resolve({ data: { content: [{ id: 22, title: '待处理需求', type: 'REQUIREMENT', requesterName: '林琳', department: '研发部', status: 'IN_DEVELOPMENT', submittedAt: '2026-07-14T08:00:00', systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null, recordVersion: 4 }], totalElements: 1, totalPages: 1 } })
-      if (url === '/requirements/22') return Promise.resolve({ data: { id: 22, title: '待处理需求', type: 'REQUIREMENT', status: 'IN_DEVELOPMENT', submittedAt: '2026-07-14T08:00:00', systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null, recordVersion: 4 } })
-      return Promise.resolve({ data: [] })
-    })
-    const wrapper = mount(RequirementList)
-    await flushPromises()
-    await wrapper.get('[data-test="manage-22"]').trigger('click')
-    await wrapper.get('[data-test="processing-status"]').setValue('COMPLETED')
-    await wrapper.get('[data-test="processing-completed-at"]').setValue('2026-07-14T09:30')
-    await wrapper.get('[data-test="processing-handler"]').setValue('李明')
-    await wrapper.get('[data-test="processing-description"]').setValue('已完成开发并验证')
-    await wrapper.get('[data-test="processing-form"]').trigger('submit.prevent')
-
-    expect(patch).toHaveBeenCalledWith('/requirements/22/processing', {
-      status: 'COMPLETED', completedAt: '2026-07-14T09:30:00', handledBy: '李明', completionDescription: '已完成开发并验证', recordVersion: 4,
-    })
   })
 
   it('queries unassigned requirements through the paged endpoint', async () => {

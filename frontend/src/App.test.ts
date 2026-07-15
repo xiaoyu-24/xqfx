@@ -27,6 +27,12 @@ vi.mock('./components/RequirementList.vue', () => ({
   }),
 }))
 
+vi.mock('./components/RequirementManagement.vue', () => ({
+  default: defineComponent({
+    template: '<p>RequirementManagement Stub</p>',
+  }),
+}))
+
 vi.mock('./components/SystemManagement.vue', () => ({
   default: defineComponent({
     emits: ['view-requirements'],
@@ -40,12 +46,24 @@ vi.mock('./components/SystemManagement.vue', () => ({
 }))
 
 describe('App', () => {
-  it('shows the three primary navigation entries', () => {
+  it('shows the four primary navigation entries in the planned order', () => {
     const wrapper = mount(App)
 
-    expect(wrapper.text()).toContain('填写需求')
-    expect(wrapper.text()).toContain('需求列表')
-    expect(wrapper.text()).toContain('系统管理')
+    expect(wrapper.findAll('aside nav button').map((button) => button.text())).toEqual([
+      '填写需求',
+      '需求列表',
+      '管理需求',
+      '系统管理',
+    ])
+  })
+
+  it('opens requirement management as an independent page', async () => {
+    const wrapper = mount(App)
+
+    await wrapper.findAll('aside nav button')[2].trigger('click')
+
+    expect(wrapper.text()).toContain('RequirementManagement Stub')
+    expect(wrapper.text()).not.toContain('RequirementList Stub')
   })
 
   it('asks for confirmation before leaving the create page from the main menu', async () => {
@@ -73,7 +91,7 @@ describe('App', () => {
     const wrapper = mount(App)
     const navButtons = wrapper.findAll('aside nav button')
 
-    await navButtons[2].trigger('click')
+    await navButtons[3].trigger('click')
     await wrapper.get('[data-test="view-system-requirements"]').trigger('click')
 
     expect(wrapper.text()).toContain('RequirementList Stub 12 1')
