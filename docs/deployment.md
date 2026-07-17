@@ -2,8 +2,8 @@
 
 ## 前置条件
 
-- Java 21。
-- MySQL 8.0+，创建数据库 `requirements_platform` 和最小权限账号。
+- Java 17。
+- MySQL 5.7.32，创建数据库 `requirements_platform` 和最小权限账号。
 - Node.js 20+（仅构建前端时需要）。
 
 ## 后端配置
@@ -11,7 +11,7 @@
 通过环境变量配置，不在仓库保存密码：
 
 ```powershell
-$env:DB_URL='jdbc:mysql://127.0.0.1:3306/requirements_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai'
+$env:DB_URL='jdbc:mysql://127.0.0.1:3306/requirements_platform?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai'
 $env:DB_USERNAME='requirements_app'
 $env:DB_PASSWORD='请设置实际密码'
 $env:ATTACHMENTS_ROOT='D:\requirements-platform\uploads'
@@ -20,6 +20,8 @@ Set-Location backend
 mvn clean package
 java -jar target\requirements-platform-0.1.0-SNAPSHOT.jar
 ```
+
+CentOS 7/宝塔部署模板见 [`deploy/centos7`](../deploy/centos7)。生产环境应复制 `.env.example` 后通过宝塔进程管理或 systemd 注入环境变量，不要把实际密码提交到仓库。
 
 Flyway 会自动执行 V1–V7 迁移，包括需求处理信息字段。应用账号需要数据库、表和索引的创建/变更权限；日常运行时建议改用仅数据读写权限的账号。
 

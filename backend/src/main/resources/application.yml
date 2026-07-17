@@ -1,13 +1,20 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/requirements_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    url: ${DB_URL:jdbc:mysql://localhost:3306/requirements_platform?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
     username: ${DB_USERNAME:requirements_app}
     password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-timeout: 30000
+      validation-timeout: 5000
+      max-lifetime: 1500000
+      keepalive-time: 300000
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: Asia/Shanghai
   flyway:
     enabled: true
     locations: classpath:db/migration

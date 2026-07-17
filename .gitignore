@@ -8,3 +8,21 @@ frontend/dist/
 uploads/
 .env
 
+# Markdown documents and local test reports
+*.md
+test-results/
+
+# Local runtime logs and temporary files
+*.log
+*.err
+*.tmp
+*.bak
+*.orig
+.playwright-cli/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

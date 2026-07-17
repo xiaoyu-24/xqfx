@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const css = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf8')
+const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8')
 
 const declarationsFor = (selector) => {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -16,5 +17,10 @@ describe('application layout', () => {
     expect(declarationsFor('.app-shell')).toContain('overflow: hidden')
     expect(declarationsFor('.sidebar')).toContain('height: 100vh')
     expect(declarationsFor('.main-content')).toContain('overflow-y: auto')
+  })
+
+  it('declares a favicon asset that exists in the public directory', () => {
+    expect(indexHtml).toContain('rel="icon"')
+    expect(existsSync(resolve(process.cwd(), 'public/favicon.svg'))).toBe(true)
   })
 })

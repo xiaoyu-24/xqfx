@@ -29,7 +29,7 @@ class SystemService {
         if (repository.existsByActiveNameKey(SystemEntity.normalizedName(profile.name()))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统名称已存在");
         }
-        var saved = repository.save(new SystemEntity(profile));
+        var saved = repository.saveAndFlush(new SystemEntity(profile));
         return toResponse(saved);
     }
 

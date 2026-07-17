@@ -13,13 +13,14 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class MySqlMigrationIntegrationTest {
 
     @Container
-    static final MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.4")
+    static final MySQLContainer<?> mysql = new MySQLContainer<>("mysql:5.7.32")
             .withDatabaseName("requirements_test")
             .withUsername("requirements_app")
             .withPassword("requirements_app");
@@ -36,6 +37,9 @@ class MySqlMigrationIntegrationTest {
 
     @Test
     void appliesMigrationsAndEnforcesActiveVersionNameUniqueness() {
+        var databaseVersion = jdbc.queryForObject("SELECT VERSION()", String.class);
+        assertTrue(databaseVersion != null && databaseVersion.startsWith("5.7.32"),
+                "Expected MySQL 5.7.32, actual: " + databaseVersion);
         var completedMigrations = jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class);
         assertTrue(completedMigrations >= 7);
         assertTrue(jdbc.queryForList("SHOW INDEX FROM system_versions WHERE Key_name = 'uk_system_versions_active_name'").size() > 0);

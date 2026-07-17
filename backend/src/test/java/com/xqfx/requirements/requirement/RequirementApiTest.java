@@ -123,6 +123,33 @@ class RequirementApiTest {
     }
 
     @Test
+    void rejectsUnknownRequirementStatusAsBadRequest() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements")
+                        .contentType("application/json")
+                        .content("""
+                                {"requesterName":"状态用户","department":"研发部","title":"非法状态","type":"BUG","content":"校验非法枚举"}
+                                """))
+                .andReturn();
+        var id = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(patch("/api/requirements/{id}/status", id)
+                        .contentType("application/json")
+                        .content("{\"status\":\"NO_SUCH_STATUS\",\"recordVersion\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("请求参数无效"));
+    }
+
+    @Test
+    void returnsNotFoundForUnknownBackendPaths() throws Exception {
+        mockMvc.perform(get("/"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void rejectsStatusUpdateWithoutRecordVersion() throws Exception {
         var created = mockMvc.perform(post("/api/requirements")
                         .contentType("application/json")

@@ -29,4 +29,11 @@ class SystemProfileTest {
                 SystemProfile.create("客户管理系统", "李明", List.of("王芳", " 王芳 "))
         );
     }
+
+    @Test
+    void rejectsOverlongCollaboratorWhenCreatingSystem() {
+        assertThrows(IllegalArgumentException.class, () ->
+                SystemProfile.create("客户管理系统", "李明", List.of("a".repeat(51)))
+        );
+    }
 }

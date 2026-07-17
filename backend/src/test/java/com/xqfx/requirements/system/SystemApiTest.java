@@ -42,6 +42,20 @@ class SystemApiTest {
     }
 
     @Test
+    void rejectsOverlongCollaboratorWithoutCreatingSystem() throws Exception {
+        var name = "超长协作者系统" + java.util.UUID.randomUUID();
+        mockMvc.perform(post("/api/systems")
+                        .contentType("application/json")
+                        .content("{\"name\":\"%s\",\"ownerName\":\"李明\",\"collaborators\":[\"%s\"]}"
+                                .formatted(name, "a".repeat(51))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/systems"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.name == '%s')]".formatted(name)).isEmpty());
+    }
+
+    @Test
     void listsCreatedSystems() throws Exception {
         mockMvc.perform(post("/api/systems")
                 .contentType("application/json")
