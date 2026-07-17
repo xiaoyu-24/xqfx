@@ -5,8 +5,17 @@
 backend/target/
 frontend/node_modules/
 frontend/dist/
+frontend/frontend-dist.zip
+frontend/test-results/
 uploads/
+backend/uploads/
+data/
+logs/
 .env
+.env.*
+!deploy/centos7/.env.example
+application-local.yml
+application-prod.yml
 
 # Markdown documents and local test reports
 *.md

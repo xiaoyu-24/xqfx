@@ -72,13 +72,18 @@ const handleViewSystemRequirements = (systemId: number) => {
           @dirty-change="createFormDirty = $event"
           @submitted="handleCreateSubmitted"
         />
-        <RequirementList
-          v-else-if="activePage === 'list'"
-          :preset-system-id="listPresetSystemId"
-          :preset-request-key="listPresetRequestKey"
+        <KeepAlive>
+          <RequirementList
+            v-if="activePage === 'list'"
+            :preset-system-id="listPresetSystemId"
+            :preset-request-key="listPresetRequestKey"
+          />
+          <RequirementManagement v-else-if="activePage === 'management'" />
+        </KeepAlive>
+        <SystemManagement
+          v-if="activePage === 'systems'"
+          @view-requirements="handleViewSystemRequirements"
         />
-        <RequirementManagement v-else-if="activePage === 'management'" />
-        <SystemManagement v-else @view-requirements="handleViewSystemRequirements" />
       </section>
     </main>
   </div>

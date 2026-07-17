@@ -32,7 +32,7 @@ const total = ref(0)
 const totalPages = ref(0)
 const currentPage = ref(0)
 const pageSize = 20
-const loading = ref(false)
+const loading = ref(true)
 const selectedRequirement = ref<Item | null>(null)
 const detailAttachments = ref<Attachment[]>([])
 const detailSelectedFiles = ref<File[]>([])
@@ -263,7 +263,7 @@ onMounted(async () => {
         <thead><tr><th>类型</th><th>需求标题</th><th>所属系统 / 版本</th><th>填写人 / 部门</th><th>周期</th><th>状态</th><th>填写时间</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="item in items" :key="item.id"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item.targetVersionId, item.targetVersionName) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.periodStartDate && item.periodEndDate ? `${item.periodStartDate} 至 ${item.periodEndDate}` : '—' }}</td><td>{{ item.status ? statusLabel[item.status] : saveTypeLabel[item.saveType ?? 'DRAFT'] }}</td><td>{{ formatShanghai(item.submittedAt || item.updatedAt) }}</td><td class="row-actions"><button type="button" :data-test="`view-${item.id}`" @click="viewDetails(item.id)">查看详情</button><button type="button" :data-test="`edit-${item.id}`" @click="openEdit(item.id)">编辑</button><button class="danger" type="button" :data-test="`delete-${item.id}`" @click="deleteRequirement(item)">删除</button></td></tr>
-          <tr v-if="!loading && items.length === 0"><td colspan="8" class="empty">暂无需求</td></tr>
+          <tr v-if="loading"><td colspan="8" class="empty">加载中…</td></tr><tr v-else-if="items.length === 0"><td colspan="8" class="empty">暂无需求</td></tr>
         </tbody>
       </table>
     </div>
@@ -291,3 +291,4 @@ onMounted(async () => {
     <div class="pagination-placeholder">共 {{ total }} 条　<button type="button" :disabled="loading || currentPage === 0" @click="query(currentPage - 1)">上一页</button>　第 {{ currentPage + 1 }} / {{ Math.max(totalPages, 1) }} 页　<button type="button" :disabled="loading || currentPage + 1 >= totalPages" @click="query(currentPage + 1)">下一页</button></div>
   </section>
 </template>
+

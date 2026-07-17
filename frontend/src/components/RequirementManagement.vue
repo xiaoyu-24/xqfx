@@ -25,7 +25,7 @@ type Item = {
 const systems = ref<SystemItem[]>([])
 const items = ref<Item[]>([])
 const total = ref(0)
-const loading = ref(false)
+const loading = ref(true)
 const processingId = ref<number | null>(null)
 const processingLoading = ref(false)
 const processingForm = reactive({ status: 'PENDING_EVALUATION', completedAt: '', handledBy: '', completionDescription: '', recordVersion: 0 })
@@ -121,7 +121,7 @@ onMounted(async () => {
         <thead><tr><th>类型</th><th>需求标题</th><th>所属系统 / 版本</th><th>填写人 / 部门</th><th>当前状态</th><th>填写时间</th><th>最后修改</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="item in items" :key="item.id"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.status ? statusLabel[item.status] : '暂存草稿' }}</td><td>{{ formatShanghai(item.submittedAt || item.updatedAt) }}</td><td>{{ formatShanghai(item.updatedAt) }}</td><td><button type="button" :data-test="`manage-${item.id}`" @click="openProcessing(item)">填写处理情况</button></td></tr>
-          <tr v-if="!loading && items.length === 0"><td colspan="8" class="empty">暂无待处理需求</td></tr>
+          <tr v-if="loading"><td colspan="8" class="empty">加载中…</td></tr><tr v-else-if="items.length === 0"><td colspan="8" class="empty">暂无待处理需求</td></tr>
         </tbody>
       </table>
     </div>
@@ -139,3 +139,4 @@ onMounted(async () => {
     </div>
   </section>
 </template>
+

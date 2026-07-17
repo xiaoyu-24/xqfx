@@ -23,6 +23,15 @@ describe('RequirementList', () => {
     expect(wrapper.text()).toContain('查询')
   })
 
+  it('shows loading state instead of empty flash before first query settles', () => {
+    get.mockImplementation(() => new Promise(() => {}))
+
+    const wrapper = mount(RequirementList)
+
+    expect(wrapper.text()).toContain('加载中')
+    expect(wrapper.text()).not.toContain('暂无需求')
+  })
+
   it('loads only the full requirement list when mounted', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/systems') return Promise.resolve({ data: [] })
@@ -51,6 +60,7 @@ describe('RequirementList', () => {
 
   it('queries unassigned requirements through the paged endpoint', async () => {
     const wrapper = mount(RequirementList)
+    await flushPromises()
 
     await wrapper.get('[data-test="system-filter"]').setValue('none')
     await wrapper.get('[data-test="query"]').trigger('click')
@@ -68,9 +78,10 @@ describe('RequirementList', () => {
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
+    await flushPromises()
 
-    await wrapper.get('[data-test="query"]').trigger('click')
     await wrapper.get('[data-test="view-7"]').trigger('click')
+    await flushPromises()
 
     expect(get).toHaveBeenCalledWith('/requirements/7')
     expect(wrapper.text()).toContain('这是完整的需求说明')
@@ -81,61 +92,69 @@ describe('RequirementList', () => {
   it('uploads a follow-up attachment from requirement detail', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '补传附件需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
-      if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '补传附件需求', content: '需求内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
+      if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '补传附件需求', content: '内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
       if (url === '/requirements/7/attachments') return Promise.resolve({ data: [] })
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
-    await wrapper.get('[data-test="query"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-test="view-7"]').trigger('click')
-    const input = wrapper.get<HTMLInputElement>('[data-test="detail-attachment-input"]')
-    Object.defineProperty(input.element, 'files', { value: [new File(['pdf'], '补传.pdf', { type: 'application/pdf' })] })
+    await flushPromises()
+
+    const file = new File(['pdf'], '补传.pdf', { type: 'application/pdf' })
+    const input = wrapper.get('[data-test="detail-attachment-input"]')
+    Object.defineProperty(input.element, 'files', { value: [file] })
     await input.trigger('change')
     await wrapper.get('[data-test="detail-attachment-upload"]').trigger('click')
+    await flushPromises()
 
-    expect(post).toHaveBeenCalledWith('/requirements/7/attachments', expect.any(FormData), expect.any(Object))
+    expect(post).toHaveBeenCalledWith('/requirements/7/attachments', expect.any(FormData), expect.objectContaining({ onUploadProgress: expect.any(Function) }))
   })
 
   it('displays the target version name returned with a requirement', async () => {
     get.mockImplementation((url: string) => {
-      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 10, title: '版本展示', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: 3, targetVersionName: 'V2.0', periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
+      if (url === '/systems') return Promise.resolve({ data: [{ id: 3, name: '系统A', status: 'ACTIVE' }] })
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 9, title: '带版本需求', type: 'REQUIREMENT', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: 3, targetVersionId: 8, targetVersionName: 'v2.1', periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
+    await flushPromises()
 
-    await wrapper.get('[data-test="query"]').trigger('click')
-
-    expect(wrapper.text()).toContain('V2.0')
-    expect(wrapper.text()).not.toContain('版本 #3')
+    expect(wrapper.text()).toContain('系统A / v2.1')
   })
 
   it('soft deletes a requirement after confirmation', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    get.mockImplementation((url: string) => url === '/requirements/page'
-      ? Promise.resolve({ data: { content: [{ id: 8, title: '待删除需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
-      : Promise.resolve({ data: [] }))
+    get.mockImplementation((url: string) => {
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '待删除需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
+      return Promise.resolve({ data: [] })
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mount(RequirementList)
+    await flushPromises()
+    await wrapper.get('[data-test="delete-7"]').trigger('click')
+    await flushPromises()
 
-    await wrapper.get('[data-test="query"]').trigger('click')
-    await wrapper.get('[data-test="delete-8"]').trigger('click')
-
-    expect(remove).toHaveBeenCalledWith('/requirements/8')
+    expect(confirm).toHaveBeenCalled()
+    expect(remove).toHaveBeenCalledWith('/requirements/7')
   })
 
   it('edits a requirement from the list', async () => {
     get.mockImplementation((url: string) => {
-      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 9, title: '原始标题', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
-      if (url === '/requirements/9') return Promise.resolve({ data: { id: 9, title: '原始标题', content: '原始内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null, recordVersion: 3 } })
+      if (url === '/systems') return Promise.resolve({ data: [{ id: 3, name: '系统A', status: 'ACTIVE' }] })
+      if (url === '/systems/3/versions') return Promise.resolve({ data: [{ id: 8, name: 'v2.1', status: 'ACTIVE' }] })
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '编辑需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: 3, targetVersionId: 8, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
+      if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '编辑需求', content: '原始内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: 3, targetVersionId: 8, periodStartDate: null, periodEndDate: null, recordVersion: 1 } })
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
-
-    await wrapper.get('[data-test="query"]').trigger('click')
-    await wrapper.get('[data-test="edit-9"]').trigger('click')
-    await wrapper.get('[data-test="edit-title"]').setValue('修改后的标题')
+    await flushPromises()
+    await wrapper.get('[data-test="edit-7"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="edit-title"]').setValue('已修改标题')
     await wrapper.get('[data-test="edit-form"]').trigger('submit.prevent')
+    await flushPromises()
 
-    expect(put).toHaveBeenCalledWith('/requirements/9', expect.objectContaining({ title: '修改后的标题', systemId: null, targetVersionId: null, recordVersion: 3 }))
+    expect(put).toHaveBeenCalledWith('/requirements/7', expect.objectContaining({ title: '已修改标题', recordVersion: 1 }))
   })
 
   it('submits a completed draft as a formal requirement', async () => {
@@ -145,9 +164,11 @@ describe('RequirementList', () => {
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
-    await wrapper.get('[data-test="query"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-test="edit-14"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-test="submit-draft-14"]').trigger('click')
+    await flushPromises()
 
     expect(put).toHaveBeenCalledWith('/requirements/14', expect.objectContaining({ recordVersion: 2 }))
   })
@@ -159,10 +180,12 @@ describe('RequirementList', () => {
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
-    await wrapper.get('[data-test="query"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-test="edit-15"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-test="edit-status"]').setValue('PENDING_EVALUATION')
     await wrapper.get('[data-test="edit-form"]').trigger('submit.prevent')
+    await flushPromises()
 
     expect(put).toHaveBeenCalledWith('/requirements/15', expect.objectContaining({ status: 'PENDING_EVALUATION' }))
   })

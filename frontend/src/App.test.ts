@@ -3,6 +3,9 @@ import { defineComponent } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
 
+const listMountCount = vi.hoisted(() => vi.fn())
+const managementMountCount = vi.hoisted(() => vi.fn())
+
 vi.mock('./components/RequirementForm.vue', () => ({
   default: defineComponent({
     emits: ['dirty-change', 'submitted'],
@@ -22,13 +25,19 @@ vi.mock('./components/RequirementList.vue', () => ({
       presetSystemId: { type: Number, default: null },
       presetRequestKey: { type: Number, default: 0 },
     },
-    template: '<p>RequirementList Stub {{ presetSystemId }} {{ presetRequestKey }}</p>',
+    setup() {
+      listMountCount()
+    },
+    template: '<p data-test="list-stub">RequirementList Stub {{ presetSystemId }} {{ presetRequestKey }}</p>',
   }),
 }))
 
 vi.mock('./components/RequirementManagement.vue', () => ({
   default: defineComponent({
-    template: '<p>RequirementManagement Stub</p>',
+    setup() {
+      managementMountCount()
+    },
+    template: '<p data-test="management-stub">RequirementManagement Stub</p>',
   }),
 }))
 
@@ -86,5 +95,21 @@ describe('App', () => {
     await wrapper.get('[data-test="view-system-requirements"]').trigger('click')
 
     expect(wrapper.text()).toContain('RequirementList Stub 12 1')
+  })
+
+  it('does not remount list and management pages when switching between them', async () => {
+    listMountCount.mockClear()
+    managementMountCount.mockClear()
+    const wrapper = mount(App)
+    const navButtons = wrapper.findAll('aside nav button')
+
+    await navButtons[1].trigger('click')
+    await navButtons[2].trigger('click')
+    await navButtons[1].trigger('click')
+    await navButtons[2].trigger('click')
+
+    expect(listMountCount).toHaveBeenCalledTimes(1)
+    expect(managementMountCount).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('RequirementManagement Stub')
   })
 })

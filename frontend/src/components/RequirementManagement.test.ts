@@ -11,6 +11,15 @@ describe('RequirementManagement', () => {
     patch.mockResolvedValue({ data: {} })
   })
 
+  it('shows loading state instead of empty flash before first query settles', () => {
+    get.mockImplementation(() => new Promise(() => {}))
+
+    const wrapper = mount(RequirementManagement)
+
+    expect(wrapper.text()).toContain('加载中')
+    expect(wrapper.text()).not.toContain('暂无待处理需求')
+  })
+
   it('loads pending requirements and drafts on its own page', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/systems') return Promise.resolve({ data: [] })
@@ -36,11 +45,13 @@ describe('RequirementManagement', () => {
     const wrapper = mount(RequirementManagement)
     await flushPromises()
     await wrapper.get('[data-test="manage-22"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-test="processing-status"]').setValue('COMPLETED')
     await wrapper.get('[data-test="processing-completed-at"]').setValue('2026-07-14T09:30')
     await wrapper.get('[data-test="processing-handler"]').setValue('李明')
     await wrapper.get('[data-test="processing-description"]').setValue('已完成开发并验证')
     await wrapper.get('[data-test="processing-form"]').trigger('submit.prevent')
+    await flushPromises()
 
     expect(patch).toHaveBeenCalledWith('/requirements/22/processing', {
       status: 'COMPLETED', completedAt: '2026-07-14T09:30:00', handledBy: '李明', completionDescription: '已完成开发并验证', recordVersion: 4,
