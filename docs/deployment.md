@@ -23,6 +23,8 @@ java -jar target\requirements-platform-0.1.0-SNAPSHOT.jar
 
 CentOS 7/宝塔部署模板见 [`deploy/centos7`](../deploy/centos7)。生产环境应复制 `.env.example` 后通过宝塔进程管理或 systemd 注入环境变量，不要把实际密码提交到仓库。
 
+前后端分域名部署时采用同源代理方式：前端继续使用 `/api`，前端域名的 Nginx 将 `/api` 代理到本机 8080；后端 API 域名可作为独立运维访问入口。这样浏览器不发生跨域请求，不需要配置 CORS 或 `VITE_API_BASE_URL`。
+
 Flyway 会自动执行 V1–V7 迁移，包括需求处理信息字段。应用账号需要数据库、表和索引的创建/变更权限；日常运行时建议改用仅数据读写权限的账号。
 
 启动完成后访问 `http://127.0.0.1:8080/api/health`，应返回 `{"status":"UP"}`。附件目录应由运行账号拥有读写权限；上传时会保留临时文件所需空间，并按 `ATTACHMENTS_MINIMUM_FREE_SPACE_BYTES` 预留剩余容量。
