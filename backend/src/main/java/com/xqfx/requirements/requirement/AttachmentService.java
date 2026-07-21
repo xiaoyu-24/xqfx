@@ -1,6 +1,7 @@
 package com.xqfx.requirements.requirement;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,8 +24,10 @@ import org.springframework.core.io.FileSystemResource;
 @Service
 class AttachmentService {
     private static final Set<String> ALLOWED = Set.of("jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "xls", "xlsx");
-    private final RequirementRepository requirements; private final AttachmentRepository attachments; private final Path root; private final long minimumFreeSpaceBytes;
-    AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, @Value("${app.attachments.root-directory:./uploads}") String rootDirectory, @Value("${app.attachments.minimum-free-space-bytes:0}") long minimumFreeSpaceBytes) { this.requirements=requirements;this.attachments=attachments;this.root=Path.of(rootDirectory).toAbsolutePath().normalize();this.minimumFreeSpaceBytes=minimumFreeSpaceBytes; }
+    private final RequirementRepository requirements; private final AttachmentRepository attachments; private final Path root; private final Path previewRoot; private final long minimumFreeSpaceBytes; private final AttachmentPreviewService previewService;
+    @Autowired AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, @Value("${app.attachments.root-directory:./uploads}") String rootDirectory, @Value("${app.attachments.minimum-free-space-bytes:0}") long minimumFreeSpaceBytes, @Value("${app.attachments.preview-directory:./previews}") String previewDirectory, AttachmentPreviewService previewService) { this(requirements,attachments,rootDirectory,minimumFreeSpaceBytes,Path.of(previewDirectory),previewService); }
+    AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, String rootDirectory, long minimumFreeSpaceBytes) { this(requirements,attachments,rootDirectory,minimumFreeSpaceBytes,Path.of(rootDirectory).resolve("previews"),null); }
+    private AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, String rootDirectory, long minimumFreeSpaceBytes, Path previewDirectory, AttachmentPreviewService previewService) { this.requirements=requirements;this.attachments=attachments;this.root=Path.of(rootDirectory).toAbsolutePath().normalize();this.previewRoot=previewDirectory.toAbsolutePath().normalize();this.minimumFreeSpaceBytes=minimumFreeSpaceBytes;this.previewService=previewService; }
     AttachmentResponse upload(Long requirementId, MultipartFile file) {
         var requirement=requirements.findByIdAndDeletedFalse(requirementId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在"));
         var originalName=file.getOriginalFilename()==null?"":Path.of(file.getOriginalFilename()).getFileName().toString();
@@ -51,6 +54,7 @@ class AttachmentService {
             temporary=null;
             var attachment = attachments.save(new AttachmentEntity(requirement,originalName,storedName,storedName,contentType,file.getSize(),checksum));
             saved = true;
+            if(previewService!=null&&attachment.id()!=null&&attachment.previewStatus()==AttachmentPreviewStatus.PENDING) previewService.schedule(attachment.id());
             return AttachmentResponse.from(attachment);
         } catch (ResponseStatusException | IllegalArgumentException exception) {
             throw exception;
@@ -61,9 +65,24 @@ class AttachmentService {
             if (!saved) deleteQuietly(target);
         }
     }
-    @Transactional(readOnly=true) java.util.List<AttachmentResponse> list(Long requirementId) { requirements.findByIdAndDeletedFalse(requirementId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在")); return attachments.findByRequirementIdAndDeletedFalseOrderByIdAsc(requirementId).stream().map(AttachmentResponse::from).toList(); }
+    @Transactional(readOnly=true)
+    java.util.List<AttachmentResponse> list(Long requirementId) {
+        requirements.findByIdAndDeletedFalse(requirementId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在"));
+        var activeAttachments = attachments.findByRequirementIdAndDeletedFalseOrderByIdAsc(requirementId);
+        if (previewService != null) {
+            activeAttachments.stream()
+                    .filter(attachment -> attachment.previewStatus() == AttachmentPreviewStatus.PENDING)
+                    .map(AttachmentEntity::id)
+                    .filter(java.util.Objects::nonNull)
+                    .forEach(previewService::schedule);
+        }
+        return activeAttachments.stream().map(AttachmentResponse::from).toList();
+    }
     AttachmentFile download(Long id) { var attachment=findActive(id); var file=root.resolve(attachment.storedName()).normalize(); if(!file.startsWith(root)||!Files.isRegularFile(file)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"附件文件不存在"); return new AttachmentFile(new FileSystemResource(file),attachment.originalName(),attachment.contentType()); }
-    @Transactional void delete(Long id) { var attachment=findActive(id); deleteQuietly(root.resolve(attachment.storedName()).normalize()); attachment.delete(); }
+    AttachmentFile preview(Long id) { var attachment=findActive(id); Path file; if(attachment.previewStatus()==AttachmentPreviewStatus.DIRECT) file=root.resolve(attachment.storedName()).normalize(); else if(attachment.previewStatus()==AttachmentPreviewStatus.READY&&attachment.previewRelativePath()!=null) file=previewRoot.resolve(attachment.previewRelativePath()).normalize(); else throw new ResponseStatusException(HttpStatus.CONFLICT,"附件预览尚未生成"); var expectedRoot=attachment.previewStatus()==AttachmentPreviewStatus.DIRECT?root:previewRoot; if(!file.startsWith(expectedRoot)||!Files.isRegularFile(file)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"附件预览文件不存在"); return new AttachmentFile(new FileSystemResource(file),attachment.originalName(),attachment.previewContentType()); }
+    AttachmentResponse retryPreview(Long id) { var attachment=findActive(id); if(attachment.previewStatus()!=AttachmentPreviewStatus.DIRECT){if(previewService!=null)previewService.requestRetry(id);else{attachment.requestPreviewRetry();attachments.save(attachment);}} return AttachmentResponse.from(findActive(id)); }
+    @Transactional void delete(Long id) { var attachment=findActive(id); deleteQuietly(root.resolve(attachment.storedName()).normalize()); if(attachment.previewRelativePath()!=null){var preview=previewRoot.resolve(attachment.previewRelativePath()).normalize();if(preview.startsWith(previewRoot))deleteQuietly(preview);} attachment.delete(); }
     private AttachmentEntity findActive(Long id) { return attachments.findByIdAndDeletedFalse(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"附件不存在")); }
     record AttachmentFile(Resource resource,String originalName,String contentType) { }
     private static String extension(String name) { var index=name.lastIndexOf('.'); return index<0?"":name.substring(index+1).toLowerCase(); }

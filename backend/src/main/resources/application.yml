@@ -27,3 +27,7 @@ app:
   attachments:
     root-directory: ${ATTACHMENTS_ROOT:./uploads}
     minimum-free-space-bytes: ${ATTACHMENTS_MINIMUM_FREE_SPACE_BYTES:0}
+    preview-directory: ${ATTACHMENTS_PREVIEW_ROOT:./previews}
+    libreoffice-executable: ${LIBREOFFICE_EXECUTABLE:libreoffice}
+    preview-timeout-seconds: ${ATTACHMENTS_PREVIEW_TIMEOUT_SECONDS:60}
+    preview-concurrency: ${ATTACHMENTS_PREVIEW_CONCURRENCY:2}

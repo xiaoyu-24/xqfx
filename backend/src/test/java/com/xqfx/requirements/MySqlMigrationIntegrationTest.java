@@ -41,10 +41,11 @@ class MySqlMigrationIntegrationTest {
         assertTrue(databaseVersion != null && databaseVersion.startsWith("5.7.32"),
                 "Expected MySQL 5.7.32, actual: " + databaseVersion);
         var completedMigrations = jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class);
-        assertTrue(completedMigrations >= 7);
+        assertTrue(completedMigrations >= 8);
         assertTrue(jdbc.queryForList("SHOW INDEX FROM system_versions WHERE Key_name = 'uk_system_versions_active_name'").size() > 0);
         assertTrue(jdbc.queryForList("SHOW INDEX FROM requirements WHERE Key_name = 'idx_requirements_status_deleted'").size() > 0);
         assertTrue(jdbc.queryForList("SHOW COLUMNS FROM requirements WHERE Field IN ('completed_at', 'handled_by', 'completion_description')").size() == 3);
+        assertEquals(6, jdbc.queryForList("SHOW COLUMNS FROM attachments WHERE Field IN ('preview_status', 'preview_relative_path', 'preview_content_type', 'preview_generated_at', 'preview_error_message', 'preview_retry_count')").size());
 
         jdbc.update("INSERT INTO systems (name, active_name_key, owner_name, status, deleted) VALUES (?, ?, ?, ?, false)",
                 "MySQL 集成测试系统", "mysql-集成测试系统", "负责人", "ACTIVE");

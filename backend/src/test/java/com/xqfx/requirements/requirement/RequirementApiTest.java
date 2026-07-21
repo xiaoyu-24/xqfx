@@ -588,6 +588,38 @@ class RequirementApiTest {
     }
 
     @Test
+    void previewsUploadedPdfInline() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"预览用户","department":"研发部","title":"预览附件","type":"BUG","content":"验证附件在线预览"}
+                """)).andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var uploaded = mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId)
+                .file(new org.springframework.mock.web.MockMultipartFile("file", "预览.pdf", "application/pdf", PDF_CONTENT))).andReturn();
+        var attachmentId = com.jayway.jsonpath.JsonPath.read(uploaded.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(get("/api/attachments/{id}/preview", attachmentId))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Content-Type", "application/pdf"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Content-Disposition", org.hamcrest.Matchers.containsString("inline")))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().bytes(PDF_CONTENT));
+    }
+
+    @Test
+    void acceptsPreviewRegenerationRequest() throws Exception {
+        var created = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
+                {"requesterName":"重试用户","department":"研发部","title":"重试预览","type":"BUG","content":"验证重新生成入口"}
+                """)).andReturn();
+        var requirementId = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString();
+        var uploaded = mockMvc.perform(multipart("/api/requirements/{id}/attachments", requirementId)
+                .file(new org.springframework.mock.web.MockMultipartFile("file", "重试.pdf", "application/pdf", PDF_CONTENT))).andReturn();
+        var attachmentId = com.jayway.jsonpath.JsonPath.read(uploaded.getResponse().getContentAsString(), "$.id").toString();
+
+        mockMvc.perform(post("/api/attachments/{id}/preview/retry", attachmentId))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.previewStatus").value("DIRECT"));
+    }
+
+    @Test
     void softDeletesAttachment() throws Exception {
         var created = mockMvc.perform(post("/api/requirements").contentType("application/json").content("""
                 {"requesterName":"删除附件用户","department":"研发部","title":"删除附件","type":"BUG","content":"验证附件软删除"}
