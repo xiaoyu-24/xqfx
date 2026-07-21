@@ -128,11 +128,12 @@ onMounted(async () => {
     <div v-if="processingId !== null" class="processing-form-wrap">
       <form class="requirement-edit" data-test="processing-form" @submit.prevent="saveProcessing">
         <div class="detail-header"><h3>填写需求完成情况</h3><button class="secondary" type="button" @click="processingId = null">返回管理需求</button></div>
+        <p class="field-requirement-legend" data-test="processing-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
         <div class="form-grid">
-          <label>需求状态 <select v-model="processingForm.status" data-test="processing-status"><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
-          <label>完成时间 <input v-model="processingForm.completedAt" data-test="processing-completed-at" type="datetime-local"></label>
-          <label>处理人 <input v-model="processingForm.handledBy" data-test="processing-handler" placeholder="请输入处理人"></label>
-          <label class="full-width">完成情况 <textarea v-model="processingForm.completionDescription" data-test="processing-description" rows="6" placeholder="请输入处理结果、验证情况等"></textarea></label>
+          <label data-test="processing-status-field">需求状态 <span class="field-required">* 必填</span><select v-model="processingForm.status" data-test="processing-status" required><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
+          <label>完成时间 <span class="field-optional">选填</span><input v-model="processingForm.completedAt" data-test="processing-completed-at" type="datetime-local"></label>
+          <label>处理人 <span class="field-optional">选填</span><input v-model="processingForm.handledBy" data-test="processing-handler" placeholder="请输入处理人"></label>
+          <label class="full-width" data-test="processing-description-field">完成情况 <span class="field-optional">选填</span><textarea v-model="processingForm.completionDescription" data-test="processing-description" rows="6" placeholder="请输入处理结果、验证情况等"></textarea></label>
         </div>
         <div class="form-actions"><button class="primary" type="submit" data-test="processing-save" :disabled="processingLoading">{{ processingLoading ? '保存中…' : '保存处理情况' }}</button></div>
       </form>

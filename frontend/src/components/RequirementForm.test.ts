@@ -26,6 +26,20 @@ describe('RequirementForm', () => {
     expect(wrapper.text()).toContain('新系统协助人')
   })
 
+  it('labels required, optional, and conditional fields explicitly', async () => {
+    const wrapper = mount(RequirementForm)
+
+    expect(wrapper.get('[data-test="field-requirement-legend"]').text()).toContain('带 * 的项目为必填项')
+    expect(wrapper.get('[data-test="requester-name-field"]').text()).toContain('* 必填')
+    expect(wrapper.get('[data-test="period-field"]').text()).toContain('选填')
+    expect(wrapper.get('[data-test="attachment-field"]').text()).toContain('选填')
+
+    await wrapper.get('[data-test="system-mode"]').setValue('new')
+
+    expect(wrapper.get('[data-test="new-system-name-field"]').text()).toContain('* 必填')
+    expect(wrapper.get('[data-test="new-system-collaborators-field"]').text()).toContain('选填')
+  })
+
   it('loads target versions for the selected system', async () => {
     const wrapper = mount(RequirementForm)
     await flushPromises()

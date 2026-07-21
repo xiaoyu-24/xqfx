@@ -145,25 +145,26 @@ const submit = async (draft: boolean) => {
 
 <template>
   <form class="requirement-form" @submit.prevent="submit(false)">
+    <p class="field-requirement-legend" data-test="field-requirement-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
     <div class="form-grid">
-      <label>姓名 <input v-model="form.requesterName" required placeholder="请输入姓名"></label>
-      <label>部门 <input v-model="form.department" required placeholder="请输入部门"></label>
-      <label class="full-width">需求标题 <input v-model="form.title" required placeholder="请简要概括需求"></label>
+      <label data-test="requester-name-field">姓名 <span class="field-required">* 必填</span><input v-model="form.requesterName" required placeholder="请输入姓名"></label>
+      <label>部门 <span class="field-required">* 必填</span><input v-model="form.department" required placeholder="请输入部门"></label>
+      <label class="full-width">需求标题 <span class="field-required">* 必填</span><input v-model="form.title" required placeholder="请简要概括需求"></label>
       <fieldset>
-        <legend>类型</legend>
+        <legend>类型 <span class="field-required">* 必填</span></legend>
         <label><input v-model="form.type" type="radio" value="BUG"> BUG</label>
         <label><input v-model="form.type" type="radio" value="REQUIREMENT"> 需求</label>
       </fieldset>
-      <div>
-        <span class="field-label">需求时间周期（上海时间）</span>
+      <div data-test="period-field">
+        <span class="field-label">需求时间周期（上海时间） <span class="field-optional">选填</span></span>
         <div class="date-range">
-          <input v-model="form.periodStartDate" type="date" aria-label="开始日期" :aria-invalid="Boolean(periodError)">
+          <input v-model="form.periodStartDate" type="date" lang="en" aria-label="开始日期" :aria-invalid="Boolean(periodError)">
           <span>至</span>
-          <input v-model="form.periodEndDate" type="date" aria-label="结束日期" :aria-invalid="Boolean(periodError)">
+          <input v-model="form.periodEndDate" type="date" lang="en" aria-label="结束日期" :aria-invalid="Boolean(periodError)">
         </div>
         <p v-if="periodError" class="field-error">{{ periodError }}</p>
       </div>
-      <label class="full-width">所属系统
+      <label class="full-width">所属系统 <span class="field-required">* 必填</span>
         <select v-model="systemMode" data-test="system-mode">
           <option value="existing">选择已有系统</option>
           <option value="new">新系统</option>
@@ -171,18 +172,18 @@ const submit = async (draft: boolean) => {
         </select>
       </label>
       <template v-if="systemMode === 'existing'">
-        <label>已有系统 <select v-model="form.systemId" data-test="system-select" @change="loadVersions"><option value="">请选择系统</option><option v-for="system in systems" :key="system.id" :value="system.id">{{ system.name }}</option></select></label>
-        <label>目标版本 <select v-model="form.targetVersionId" :disabled="!form.systemId"><option value="">请选择版本（可选）</option><option v-for="version in versions" :key="version.id" :value="version.id">{{ version.name }}</option></select></label>
+        <label>已有系统 <span class="field-required">* 必填</span><select v-model="form.systemId" data-test="system-select" required @change="loadVersions"><option value="">请选择系统</option><option v-for="system in systems" :key="system.id" :value="system.id">{{ system.name }}</option></select></label>
+        <label>目标版本 <span class="field-optional">选填</span><select v-model="form.targetVersionId" :disabled="!form.systemId"><option value="">请选择版本（可选）</option><option v-for="version in versions" :key="version.id" :value="version.id">{{ version.name }}</option></select></label>
       </template>
       <template v-else-if="systemMode === 'new'">
-        <label>新系统名称 <input v-model="form.newSystemName" :required="systemMode === 'new'" placeholder="请输入系统名称"></label>
-        <label>新系统负责人 <input v-model="form.newSystemOwnerName" :required="systemMode === 'new'" placeholder="请输入负责人姓名"></label>
-        <label class="full-width">新系统协助人 <input v-model="form.newSystemCollaborators" placeholder="多人请用逗号分隔"></label>
+        <label data-test="new-system-name-field">新系统名称 <span class="field-required">* 必填</span><input v-model="form.newSystemName" :required="systemMode === 'new'" placeholder="请输入系统名称"></label>
+        <label>新系统负责人 <span class="field-required">* 必填</span><input v-model="form.newSystemOwnerName" :required="systemMode === 'new'" placeholder="请输入负责人姓名"></label>
+        <label class="full-width" data-test="new-system-collaborators-field">新系统协助人 <span class="field-optional">选填</span><input v-model="form.newSystemCollaborators" placeholder="多人请用逗号分隔"></label>
       </template>
-      <label class="full-width">需求内容
+      <label class="full-width">需求内容 <span class="field-required">* 必填</span>
         <textarea v-model="form.content" required rows="10" placeholder="请描述背景、问题、期望结果和验收标准"></textarea>
       </label>
-      <div class="full-width attachment-note"><strong>附件</strong>：支持图片、PDF、Word、Excel，业务层不限制单个文件大小。<input data-test="attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectFiles"><span v-if="submitting && selectedFiles.length">上传中 {{ uploadProgress }}%</span><ul v-if="selectedFiles.length"><li v-for="(file, index) in selectedFiles" :key="`${file.name}-${index}`">{{ file.name }} <button type="button" @click="removeSelectedFile(index)">移除</button></li></ul><ul v-if="uploadedAttachments.length"><li v-for="attachment in uploadedAttachments" :key="attachment.id">已上传：{{ attachment.originalName }}</li></ul></div>
+      <div class="full-width attachment-note" data-test="attachment-field"><strong>附件 <span class="field-optional">选填</span></strong>：支持图片、PDF、Word、Excel，上传后可在线预览；业务层不限制单个文件大小。<input data-test="attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectFiles"><span v-if="submitting && selectedFiles.length">上传中 {{ uploadProgress }}%</span><ul v-if="selectedFiles.length"><li v-for="(file, index) in selectedFiles" :key="`${file.name}-${index}`">{{ file.name }} <button type="button" @click="removeSelectedFile(index)">移除</button></li></ul><ul v-if="uploadedAttachments.length"><li v-for="attachment in uploadedAttachments" :key="attachment.id">已上传：{{ attachment.originalName }}</li></ul></div>
     </div>
     <div class="form-actions">
       <button class="secondary" type="button" :disabled="submitting" @click="submit(true)">暂存</button>
