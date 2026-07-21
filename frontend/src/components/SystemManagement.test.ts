@@ -28,10 +28,21 @@ describe('SystemManagement', () => {
     expect(wrapper.text()).toContain('版本管理')
   })
 
+  it('shows loading state instead of the empty state before systems load', () => {
+    get.mockReturnValue(new Promise(() => {}))
+    const wrapper = mount(SystemManagement)
+
+    expect(wrapper.text()).toContain('加载中…')
+    expect(wrapper.text()).not.toContain('暂无系统数据，请新增系统')
+  })
+
   it('creates a system with its owner and collaborators', async () => {
     const wrapper = mount(SystemManagement)
 
     await wrapper.get('button').trigger('click')
+    expect(wrapper.get('[data-test="system-field-legend"]').text()).toContain('带 * 的项目为必填项')
+    expect(wrapper.get('[data-test="system-name-field"]').text()).toContain('* 必填')
+    expect(wrapper.get('[data-test="system-collaborators-field"]').text()).toContain('选填')
     await wrapper.get('[data-test="system-name"]').setValue('客户系统')
     await wrapper.get('[data-test="system-owner"]').setValue('李明')
     await wrapper.get('[data-test="system-collaborators"]').setValue('王芳, 赵敏')

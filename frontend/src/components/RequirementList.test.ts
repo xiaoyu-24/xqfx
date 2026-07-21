@@ -17,6 +17,7 @@ describe('RequirementList', () => {
   it('shows the primary list filters', () => {
     const wrapper = mount(RequirementList)
 
+    expect(wrapper.get('[data-test="filter-optional-hint"]').text()).toContain('筛选条件均为选填')
     expect(wrapper.text()).toContain('关键词')
     expect(wrapper.text()).toContain('所属系统')
     expect(wrapper.text()).toContain('需求状态')
@@ -74,7 +75,7 @@ describe('RequirementList', () => {
     get.mockImplementation((url: string) => {
       if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '详情需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
       if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '详情需求', content: '这是完整的需求说明', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: '2026-07-10T10:00:00', systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
-      if (url === '/requirements/7/attachments') return Promise.resolve({ data: [{ id: 11, originalName: '说明.pdf', contentType: 'application/pdf', sizeBytes: 12 }, { id: 12, originalName: '截图.png', contentType: 'image/png', sizeBytes: 24 }] })
+      if (url === '/requirements/7/attachments') return Promise.resolve({ data: [{ id: 11, originalName: '说明.pdf', contentType: 'application/pdf', sizeBytes: 12, previewStatus: 'DIRECT', previewAvailable: true, previewContentType: 'application/pdf' }, { id: 12, originalName: '截图.png', contentType: 'image/png', sizeBytes: 24, previewStatus: 'DIRECT', previewAvailable: true, previewContentType: 'image/png' }] })
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(RequirementList)
@@ -87,6 +88,12 @@ describe('RequirementList', () => {
     expect(wrapper.text()).toContain('这是完整的需求说明')
     expect(wrapper.get('[data-test="attachment-download-11"]').attributes('href')).toBe('/api/attachments/11')
     expect(wrapper.get('[data-test="attachment-preview-12"]').attributes('src')).toBe('/api/attachments/12')
+
+    await wrapper.get('[data-test="attachment-open-preview-11"]').trigger('click')
+
+    expect(wrapper.get('[data-test="attachment-preview-dialog"]').text()).toContain('说明.pdf')
+    expect(wrapper.get('[data-test="attachment-preview-frame"]').attributes('src')).toBe('/api/attachments/11/preview')
+    expect(wrapper.get('[data-test="attachment-preview-download"]').attributes('href')).toBe('/api/attachments/11')
   })
 
   it('uploads a follow-up attachment from requirement detail', async () => {
@@ -109,6 +116,52 @@ describe('RequirementList', () => {
     await flushPromises()
 
     expect(post).toHaveBeenCalledWith('/requirements/7/attachments', expect.any(FormData), expect.objectContaining({ onUploadProgress: expect.any(Function) }))
+  })
+
+  it('retries a failed Office attachment preview', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '预览失败需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
+      if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '预览失败需求', content: '内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
+      if (url === '/requirements/7/attachments') return Promise.resolve({ data: [{ id: 21, originalName: '说明.docx', contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sizeBytes: 20, previewStatus: 'FAILED', previewAvailable: false, previewContentType: null, previewErrorMessage: 'LibreOffice转换失败' }] })
+      return Promise.resolve({ data: [] })
+    })
+    post.mockResolvedValueOnce({ data: { id: 21, originalName: '说明.docx', contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sizeBytes: 20, previewStatus: 'PENDING', previewAvailable: false, previewContentType: null } })
+    const wrapper = mount(RequirementList)
+    await flushPromises()
+    await wrapper.get('[data-test="view-7"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('LibreOffice转换失败')
+
+    await wrapper.get('[data-test="attachment-retry-preview-21"]').trigger('click')
+    await flushPromises()
+
+    expect(post).toHaveBeenCalledWith('/attachments/21/preview/retry')
+    expect(wrapper.text()).toContain('等待生成预览')
+  })
+
+  it('refreshes pending Office preview status until it is ready', async () => {
+    vi.useFakeTimers()
+    let attachmentLoads = 0
+    get.mockImplementation((url: string) => {
+      if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '转换中需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
+      if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '转换中需求', content: '内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
+      if (url === '/requirements/7/attachments') {
+        attachmentLoads += 1
+        return Promise.resolve({ data: [{ id: 31, originalName: '进度.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', sizeBytes: 20, previewStatus: attachmentLoads === 1 ? 'PENDING' : 'READY', previewAvailable: attachmentLoads > 1, previewContentType: attachmentLoads > 1 ? 'application/pdf' : null }] })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = mount(RequirementList)
+    await flushPromises()
+    await wrapper.get('[data-test="view-7"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('等待生成预览')
+
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="attachment-open-preview-31"]').exists()).toBe(true)
+    vi.useRealTimers()
   })
 
   it('displays the target version name returned with a requirement', async () => {
@@ -150,6 +203,9 @@ describe('RequirementList', () => {
     await flushPromises()
     await wrapper.get('[data-test="edit-7"]').trigger('click')
     await flushPromises()
+    expect(wrapper.get('[data-test="edit-field-legend"]').text()).toContain('带 * 的项目为必填项')
+    expect(wrapper.get('[data-test="edit-title-field"]').text()).toContain('* 必填')
+    expect(wrapper.get('[data-test="edit-period-field"]').text()).toContain('选填')
     await wrapper.get('[data-test="edit-title"]').setValue('已修改标题')
     await wrapper.get('[data-test="edit-form"]').trigger('submit.prevent')
     await flushPromises()

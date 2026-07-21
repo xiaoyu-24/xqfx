@@ -5,6 +5,7 @@ import App from './App.vue'
 
 const listMountCount = vi.hoisted(() => vi.fn())
 const managementMountCount = vi.hoisted(() => vi.fn())
+const systemsMountCount = vi.hoisted(() => vi.fn())
 
 vi.mock('./components/RequirementForm.vue', () => ({
   default: defineComponent({
@@ -44,6 +45,9 @@ vi.mock('./components/RequirementManagement.vue', () => ({
 vi.mock('./components/SystemManagement.vue', () => ({
   default: defineComponent({
     emits: ['view-requirements'],
+    setup() {
+      systemsMountCount()
+    },
     template: `
       <div>
         <button type="button" data-test="view-system-requirements" @click="$emit('view-requirements', 12)">view requirements</button>
@@ -111,5 +115,18 @@ describe('App', () => {
     expect(listMountCount).toHaveBeenCalledTimes(1)
     expect(managementMountCount).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('RequirementManagement Stub')
+  })
+
+  it('does not remount system management when switching between data pages', async () => {
+    systemsMountCount.mockClear()
+    const wrapper = mount(App)
+    const navButtons = wrapper.findAll('aside nav button')
+
+    await navButtons[3].trigger('click')
+    await navButtons[1].trigger('click')
+    await navButtons[3].trigger('click')
+
+    expect(systemsMountCount).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('SystemManagement Stub')
   })
 })
