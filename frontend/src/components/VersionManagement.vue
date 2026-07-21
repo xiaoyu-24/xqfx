@@ -103,13 +103,14 @@ onMounted(loadSystems)
 <template>
   <section class="version-management-page">
     <div class="system-toolbar version-toolbar">
-      <label>选择系统
-        <select data-test="version-system-select" @change="onSystemChange">
-          <option value="">请选择系统</option>
+      <div class="system-select-filter">
+        <label for="version-system-select">选择系统</label>
+        <select id="version-system-select" data-test="version-system-select" @change="onSystemChange">
+          <option value="">-- 请选择系统 --</option>
           <option v-for="system in systems" :key="system.id" :value="system.id">{{ system.name }}</option>
         </select>
-      </label>
-      <button v-if="selectedSystem" class="primary" type="button" @click="showCreateVersion">新增版本</button>
+      </div>
+      <button v-if="selectedSystem" class="primary btn-add-version" type="button" @click="showCreateVersion">+ 新增版本</button>
     </div>
 
     <div v-if="!selectedSystem" class="version-empty-hint">

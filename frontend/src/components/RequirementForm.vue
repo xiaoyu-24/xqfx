@@ -10,7 +10,12 @@ const emit = defineEmits<{
   submitted: []
 }>()
 
-const systemMode = ref<SystemMode>('existing')
+const systemSelect = ref('')
+const systemMode = computed<SystemMode>(() => {
+  if (systemSelect.value === 'new') return 'new'
+  if (!systemSelect.value || systemSelect.value === 'none') return 'none'
+  return 'existing'
+})
 const form = reactive({
   requesterName: '',
   department: '',
@@ -34,7 +39,7 @@ const uploadedAttachments = ref<Array<{ id: number; originalName: string }>>([])
 const uploadProgress = ref(0)
 
 const createSnapshot = () => JSON.stringify({
-  systemMode: systemMode.value,
+  systemSelect: systemSelect.value,
   form: { ...form },
   selectedFiles: selectedFiles.value.map((file) => ({
     name: file.name,
@@ -88,13 +93,16 @@ const loadVersions = async () => {
     ElMessage.warning('版本列表加载失败')
   }
 }
-watch(systemMode, (mode) => {
-  form.targetVersionId = ''
-  if (mode !== 'existing') {
+const onSystemSelectChange = async () => {
+  if (systemMode.value === 'existing') {
+    form.systemId = systemSelect.value
+    await loadVersions()
+  } else {
     form.systemId = ''
+    form.targetVersionId = ''
     versions.value = []
   }
-})
+}
 const requestBody = () => ({
   requesterName: form.requesterName, department: form.department, title: form.title, type: form.type,
   content: form.content, periodStartDate: form.periodStartDate || null, periodEndDate: form.periodEndDate || null,
@@ -165,15 +173,15 @@ const submit = async (draft: boolean) => {
         <p v-if="periodError" class="field-error">{{ periodError }}</p>
       </div>
       <label class="full-width">所属系统 <span class="field-required">* 必填</span>
-        <select v-model="systemMode" data-test="system-mode">
-          <option value="existing">选择已有系统</option>
+        <select v-model="systemSelect" data-test="system-select" required @change="onSystemSelectChange">
+          <option value="">请选择系统</option>
+          <option v-for="system in systems" :key="system.id" :value="String(system.id)">{{ system.name }}</option>
           <option value="new">新系统</option>
           <option value="none">暂无系统</option>
         </select>
       </label>
       <template v-if="systemMode === 'existing'">
-        <label>已有系统 <span class="field-required">* 必填</span><select v-model="form.systemId" data-test="system-select" required @change="loadVersions"><option value="">请选择系统</option><option v-for="system in systems" :key="system.id" :value="system.id">{{ system.name }}</option></select></label>
-        <label>目标版本 <span class="field-optional">选填</span><select v-model="form.targetVersionId" :disabled="!form.systemId"><option value="">请选择版本（可选）</option><option v-for="version in versions" :key="version.id" :value="version.id">{{ version.name }}</option></select></label>
+        <label>目标版本 <span class="field-optional">选填</span><select v-model="form.targetVersionId" data-test="version-select"><option value="">请选择版本（可选）</option><option v-for="version in versions" :key="version.id" :value="version.id">{{ version.name }}</option></select></label>
       </template>
       <template v-else-if="systemMode === 'new'">
         <label data-test="new-system-name-field">新系统名称 <span class="field-required">* 必填</span><input v-model="form.newSystemName" :required="systemMode === 'new'" placeholder="请输入系统名称"></label>

@@ -19,13 +19,12 @@ describe('SystemManagement', () => {
     post.mockResolvedValue({ data: { id: 1, name: '客户系统', ownerName: '李明', collaborators: [], status: 'ACTIVE' } })
   })
 
-  it('shows system and version management controls', () => {
+  it('shows system management controls', () => {
     const wrapper = mount(SystemManagement)
 
     expect(wrapper.text()).toContain('新增系统')
     expect(wrapper.text()).toContain('负责人')
     expect(wrapper.text()).toContain('协助人')
-    expect(wrapper.text()).toContain('版本管理')
   })
 
   it('shows loading state instead of the empty state before systems load', () => {
@@ -98,11 +97,6 @@ describe('SystemManagement', () => {
           ],
         })
       }
-      if (url === '/systems/1/versions') {
-        return Promise.resolve({
-          data: [{ id: 11, systemId: 1, name: 'V2.0', status: 'ACTIVE', requirementCount: 5 }],
-        })
-      }
       return Promise.resolve({ data: [] })
     })
     const wrapper = mount(SystemManagement)
@@ -112,12 +106,6 @@ describe('SystemManagement', () => {
     expect(wrapper.text()).toContain('关联需求数')
     expect(wrapper.text()).toContain('3')
     expect(wrapper.text()).toContain('8')
-
-    await wrapper.get('[data-test="versions-1"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('V2.0')
-    expect(wrapper.text()).toContain('5 条需求')
 
     await wrapper.get('[data-test="owner-filter"]').setValue('张敏')
     await wrapper.get('[data-test="status-filter"]').setValue('INACTIVE')

@@ -96,7 +96,7 @@ describe('RequirementList', () => {
     expect(wrapper.get('[data-test="attachment-preview-download"]').attributes('href')).toBe('/api/attachments/11')
   })
 
-  it('uploads a follow-up attachment from requirement detail', async () => {
+  it('uploads a follow-up attachment from requirement edit', async () => {
     get.mockImplementation((url: string) => {
       if (url === '/requirements/page') return Promise.resolve({ data: { content: [{ id: 7, title: '补传附件需求', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null }], totalElements: 1, totalPages: 1 } })
       if (url === '/requirements/7') return Promise.resolve({ data: { id: 7, title: '补传附件需求', content: '内容', type: 'BUG', requesterName: '林琳', department: '研发部', status: 'PENDING_EVALUATION', saveType: 'SUBMITTED', submittedAt: null, systemId: null, targetVersionId: null, periodStartDate: null, periodEndDate: null } })
@@ -105,17 +105,17 @@ describe('RequirementList', () => {
     })
     const wrapper = mount(RequirementList)
     await flushPromises()
-    await wrapper.get('[data-test="view-7"]').trigger('click')
+    await wrapper.get('[data-test="edit-7"]').trigger('click')
     await flushPromises()
 
     const file = new File(['pdf'], '补传.pdf', { type: 'application/pdf' })
-    const input = wrapper.get('[data-test="detail-attachment-input"]')
+    const input = wrapper.get('[data-test="edit-attachment-input"]')
     Object.defineProperty(input.element, 'files', { value: [file] })
     await input.trigger('change')
-    await wrapper.get('[data-test="detail-attachment-upload"]').trigger('click')
+    await wrapper.get('[data-test="edit-attachment-upload"]').trigger('click')
     await flushPromises()
 
-    expect(post).toHaveBeenCalledWith('/requirements/7/attachments', expect.any(FormData), expect.objectContaining({ onUploadProgress: expect.any(Function) }))
+    expect(post).toHaveBeenCalledWith('/requirements/7/attachments', expect.any(FormData))
   })
 
   it('retries a failed Office attachment preview', async () => {

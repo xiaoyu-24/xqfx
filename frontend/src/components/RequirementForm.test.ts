@@ -19,7 +19,7 @@ describe('RequirementForm', () => {
   it('shows new-system fields when the user selects a new system', async () => {
     const wrapper = mount(RequirementForm)
 
-    await wrapper.get('[data-test="system-mode"]').setValue('new')
+    await wrapper.get('[data-test="system-select"]').setValue('new')
 
     expect(wrapper.text()).toContain('新系统名称')
     expect(wrapper.text()).toContain('新系统负责人')
@@ -34,7 +34,7 @@ describe('RequirementForm', () => {
     expect(wrapper.get('[data-test="period-field"]').text()).toContain('选填')
     expect(wrapper.get('[data-test="attachment-field"]').text()).toContain('选填')
 
-    await wrapper.get('[data-test="system-mode"]').setValue('new')
+    await wrapper.get('[data-test="system-select"]').setValue('new')
 
     expect(wrapper.get('[data-test="new-system-name-field"]').text()).toContain('* 必填')
     expect(wrapper.get('[data-test="new-system-collaborators-field"]').text()).toContain('选填')
@@ -55,8 +55,8 @@ describe('RequirementForm', () => {
     await flushPromises()
     await wrapper.get('[data-test="system-select"]').setValue('4')
     await flushPromises()
-    await wrapper.findAll('select')[2].setValue('8')
-    await wrapper.get('[data-test="system-mode"]').setValue('none')
+    await wrapper.get('[data-test="version-select"]').setValue('8')
+    await wrapper.get('[data-test="system-select"]').setValue('none')
     await wrapper.find('input[placeholder="请输入姓名"]').setValue('林琳')
     await wrapper.find('input[placeholder="请输入部门"]').setValue('研发部')
     await wrapper.find('input[placeholder="请简要概括需求"]').setValue('暂无系统需求')

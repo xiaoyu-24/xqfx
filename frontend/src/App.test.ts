@@ -58,7 +58,7 @@ vi.mock('./components/SystemManagement.vue', () => ({
 }))
 
 describe('App', () => {
-  it('shows the four primary navigation entries in the planned order', () => {
+  it('shows the five primary navigation entries in the planned order', () => {
     const wrapper = mount(App)
 
     expect(wrapper.findAll('aside nav button').map((button) => button.text())).toEqual([
@@ -66,6 +66,7 @@ describe('App', () => {
       '需求列表',
       '管理需求',
       '系统管理',
+      '版本管理',
     ])
   })
 
