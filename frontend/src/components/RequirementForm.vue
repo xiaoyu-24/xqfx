@@ -184,44 +184,32 @@ const submit = async (draft: boolean) => {
 <template>
   <section class="requirement-form-shell" aria-labelledby="requirement-form-title">
     <Card class="requirement-form-card" data-test="requirement-form-card" :bordered="false">
-      <template #title>
-        <div>
-          <h2 id="requirement-form-title" class="form-title">提交需求</h2>
-          <p class="form-subtitle">填写清晰的背景、目标和验收标准，帮助团队更快推进处理。</p>
-        </div>
-      </template>
-
       <p class="field-requirement-legend" data-test="field-requirement-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
 
       <Form :model="form" layout="vertical" class="requirement-form" @submit.prevent="submit(false)">
         <div class="form-grid">
-          <Form.Item data-test="requester-name-field" required>
-            <template #label>姓名 <span class="field-required">必填</span></template>
+          <Form.Item data-test="requester-name-field" label="姓名" required>
             <Input v-model:value="form.requesterName" required placeholder="请输入姓名" />
           </Form.Item>
 
-          <Form.Item required>
-            <template #label>部门 <span class="field-required">必填</span></template>
+          <Form.Item label="部门" required>
             <Select v-model:value="form.department" data-test="department-select" placeholder="请选择部门" class="department-select">
               <Select.Option v-for="department in DEPARTMENTS" :key="department" :value="department">{{ department }}</Select.Option>
             </Select>
           </Form.Item>
 
-          <Form.Item class="full-width" required>
-            <template #label>需求标题 <span class="field-required">必填</span></template>
+          <Form.Item class="full-width" label="需求标题" required>
             <Input v-model:value="form.title" required placeholder="请简要概括需求" />
           </Form.Item>
 
-          <Form.Item required>
-            <template #label>类型 <span class="field-required">必填</span></template>
+          <Form.Item label="类型" required>
             <Radio.Group v-model:value="form.type">
               <Radio value="BUG">BUG</Radio>
               <Radio value="REQUIREMENT">需求</Radio>
             </Radio.Group>
           </Form.Item>
 
-          <Form.Item class="period-form-item" data-test="period-field" :validate-status="periodError ? 'error' : undefined" :help="periodError || undefined">
-            <template #label>需求时间周期（上海时间） <span class="field-optional">选填</span></template>
+          <Form.Item class="period-form-item" label="需求时间周期（上海时间）" data-test="period-field" :validate-status="periodError ? 'error' : undefined" :help="periodError || undefined">
             <div class="date-range">
               <DatePicker v-model:value="form.periodStartDate" value-format="YYYY-MM-DD" placeholder="开始日期" aria-label="开始日期" :status="periodError ? 'error' : undefined" />
               <span class="range-separator">至</span>
@@ -229,8 +217,7 @@ const submit = async (draft: boolean) => {
             </div>
           </Form.Item>
 
-          <Form.Item class="full-width" required>
-            <template #label>所属系统 <span class="field-required">必填</span></template>
+          <Form.Item class="full-width" label="所属系统" required>
             <Select v-model:value="systemSelect" data-test="system-select" placeholder="请选择系统" @change="onSystemSelectChange">
               <Select.Option v-for="system in systems" :key="system.id" :value="String(system.id)">{{ system.name }}</Select.Option>
               <Select.Option value="new">新系统</Select.Option>
@@ -239,8 +226,7 @@ const submit = async (draft: boolean) => {
           </Form.Item>
 
           <template v-if="systemMode === 'existing'">
-            <Form.Item>
-              <template #label>目标版本 <span class="field-optional">选填</span></template>
+            <Form.Item label="目标版本">
               <Select v-model:value="form.targetVersionId" data-test="version-select" placeholder="请选择版本（可选）">
                 <Select.Option v-for="version in versions" :key="version.id" :value="String(version.id)">{{ version.name }}</Select.Option>
               </Select>
@@ -248,27 +234,22 @@ const submit = async (draft: boolean) => {
           </template>
 
           <template v-else-if="systemMode === 'new'">
-            <Form.Item data-test="new-system-name-field" required>
-              <template #label>新系统名称 <span class="field-required">必填</span></template>
+            <Form.Item data-test="new-system-name-field" label="新系统名称" required>
               <Input v-model:value="form.newSystemName" :required="systemMode === 'new'" placeholder="请输入系统名称" />
             </Form.Item>
-            <Form.Item required>
-              <template #label>新系统负责人 <span class="field-required">必填</span></template>
+            <Form.Item label="新系统负责人" required>
               <Input v-model:value="form.newSystemOwnerName" :required="systemMode === 'new'" placeholder="请输入负责人姓名" />
             </Form.Item>
-            <Form.Item class="full-width" data-test="new-system-collaborators-field">
-              <template #label>新系统协助人 <span class="field-optional">选填</span></template>
+            <Form.Item class="full-width" data-test="new-system-collaborators-field" label="新系统协助人">
               <Input v-model:value="form.newSystemCollaborators" placeholder="多人请用逗号分隔" />
             </Form.Item>
           </template>
 
-          <Form.Item class="full-width" required>
-            <template #label>需求内容 <span class="field-required">必填</span></template>
+          <Form.Item class="full-width" label="需求内容" required>
             <Input.TextArea v-model:value="form.content" required :rows="10" placeholder="请描述背景、问题、期望结果和验收标准" />
           </Form.Item>
 
-          <Form.Item class="full-width attachment-form-item" data-test="attachment-field">
-            <template #label>附件 <span class="field-optional">选填</span></template>
+          <Form.Item class="full-width attachment-form-item" data-test="attachment-field" label="附件">
             <p class="attachment-hint">支持图片、PDF、Word、Excel，单个文件最大 100MB。</p>
             <div class="attachment-dropzone" :class="{ 'is-dragging': isDragging }" data-test="attachment-dropzone" role="button" tabindex="0" @click="openAttachmentPicker" @keydown.enter.prevent="openAttachmentPicker" @dragenter.prevent="isDragging = true" @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="dropFiles">
               <Button type="dashed" block>拖拽文件到此处，或点击选择</Button>
@@ -298,8 +279,7 @@ const submit = async (draft: boolean) => {
 
 <style scoped>
 .requirement-form-shell {
-  max-width: 1080px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .requirement-form-card {

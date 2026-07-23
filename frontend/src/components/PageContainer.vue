@@ -19,7 +19,6 @@ defineProps<{
     <div v-if="title || description || $slots.extra" class="page-header">
       <div class="page-header-left">
         <h1 v-if="title" class="page-title">{{ title }}</h1>
-        <p v-if="description" class="page-description">{{ description }}</p>
       </div>
       <div v-if="$slots.extra" class="page-header-extra">
         <slot name="extra" />
@@ -37,7 +36,7 @@ defineProps<{
 .page-container {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .page-header {
@@ -46,6 +45,10 @@ defineProps<{
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  padding: 16px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+  border-radius: 8px;
 }
 
 .page-header-left {
@@ -63,7 +66,7 @@ defineProps<{
 
 .page-description {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(0, 0, 0, 0.45);
 }
 
@@ -84,6 +87,7 @@ defineProps<{
   }
   .page-header {
     gap: 12px;
+    padding: 12px 16px;
   }
 }
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ConfigProvider, Layout, LayoutContent, LayoutSider, Menu, MenuItem } from 'ant-design-vue'
+import { ConfigProvider, Layout, LayoutContent, LayoutHeader, LayoutSider, Menu, MenuItem } from 'ant-design-vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -63,26 +63,31 @@ const handleViewSystemRequirements = (systemId: number) => {
 <template>
   <ConfigProvider :theme="themeConfig" :locale="zhCN">
     <Layout class="app-shell ant-app-shell" data-test="ant-layout">
-      <LayoutSider class="sidebar ant-sidebar" :width="224">
-        <div class="brand ant-brand"><AppstoreOutlined class="brand-icon" /><span class="brand-title">需求分析平台</span></div>
-        <nav aria-label="主菜单">
-          <Menu theme="dark" mode="inline" :selected-keys="[activePage]" @click="handleMenuClick">
-            <MenuItem v-for="page in pages" :key="page.key" :data-test="`nav-${page.key}`">
-              <template #icon>
-                <FileTextOutlined v-if="page.key === 'create'" />
-                <UnorderedListOutlined v-else-if="page.key === 'list'" />
-                <AuditOutlined v-else-if="page.key === 'management'" />
-                <SettingOutlined v-else-if="page.key === 'systems'" />
-                <TagsOutlined v-else />
-              </template>
-              {{ page.label }}
-            </MenuItem>
-          </Menu>
-        </nav>
-      </LayoutSider>
-      <Layout>
+      <LayoutHeader class="pro-header ant-layout-header">
+        <div class="brand ant-brand">
+          <AppstoreOutlined class="brand-icon" />
+          <span class="brand-title">需求分析平台</span>
+        </div>
+      </LayoutHeader>
+      <Layout class="pro-body-layout">
+        <LayoutSider class="sidebar ant-sidebar" :width="200" theme="light">
+          <nav aria-label="主菜单">
+            <Menu theme="light" mode="inline" :selected-keys="[activePage]" @click="handleMenuClick">
+              <MenuItem v-for="page in pages" :key="page.key" :data-test="`nav-${page.key}`">
+                <template #icon>
+                  <FileTextOutlined v-if="page.key === 'create'" />
+                  <UnorderedListOutlined v-else-if="page.key === 'list'" />
+                  <AuditOutlined v-else-if="page.key === 'management'" />
+                  <SettingOutlined v-else-if="page.key === 'systems'" />
+                  <TagsOutlined v-else />
+                </template>
+                {{ page.label }}
+              </MenuItem>
+            </Menu>
+          </nav>
+        </LayoutSider>
         <LayoutContent class="main-content ant-main-content">
-          <PageContainer :description="active.description">
+          <PageContainer :title="active.label" :description="active.description">
             <RequirementForm
               v-if="activePage === 'create'"
               @dirty-change="createFormDirty = $event"

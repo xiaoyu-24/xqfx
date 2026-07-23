@@ -124,7 +124,7 @@ usePageRefresh('versions', async () => {
 
 <template>
   <section class="version-management-page">
-    <Card title="版本管理" :bordered="false">
+    <Card :bordered="false">
       <Form class="version-toolbar" layout="inline">
         <FormItem label="选择系统">
           <Select v-model:value="selectedSystemId" data-test="version-system-select" allow-clear show-search placeholder="请选择系统" :options="systems.map((system) => ({ value: system.id, label: system.name }))" @change="onSystemChange" />
@@ -163,7 +163,7 @@ usePageRefresh('versions', async () => {
 
     <Modal v-model:open="versionFormOpen" :title="versionFormMode === 'create' ? '新增版本' : '编辑版本'" :footer="null" destroy-on-close :get-container="false" @cancel="versionFormMode = null">
       <Form data-test="version-modal" layout="vertical" @submit.prevent="saveVersion">
-        <FormItem><template #label>版本名称 <span class="field-required">* 必填</span></template><Input v-model:value="versionForm.name" data-test="version-name" placeholder="请输入版本名称" /></FormItem>
+        <FormItem label="版本名称" required><Input v-model:value="versionForm.name" data-test="version-name" placeholder="请输入版本名称" /></FormItem>
         <Space class="form-actions"><Button html-type="button" @click="versionFormMode = null">取消</Button><Button type="primary" html-type="submit">保存</Button></Space>
       </Form>
     </Modal>

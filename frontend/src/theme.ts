@@ -22,10 +22,10 @@ export const themeConfig: NonNullable<ConfigProviderProps['theme']> = {
     colorSuccess: '#52c41a',
     colorWarning: '#faad14',
     colorError: '#ff4d4f',
-    colorBgLayout: '#f5f7fa',
+    colorBgLayout: '#f5f5f5',
     borderRadius: 8,
     fontFamily:
-      'Inter, "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
     fontSize: 14,
     wireframe: false,
   },
@@ -33,22 +33,24 @@ export const themeConfig: NonNullable<ConfigProviderProps['theme']> = {
     Layout: {
       headerBg: '#ffffff',
       headerHeight: 64,
-      siderBg: '#001529',
-      bodyBg: '#f5f7fa',
+      siderBg: '#ffffff',
+      bodyBg: '#f5f5f5',
     } as any,
     Menu: {
-      darkItemBg: '#001529',
-      darkSubMenuItemBg: '#000c17',
+      itemBg: '#ffffff',
+      itemSelectedBg: '#e6f4ff',
+      itemSelectedColor: '#1677ff',
+      activeBarWidth: 3,
     } as any,
     Card: {
-      borderRadiusLG: 10,
+      borderRadiusLG: 8,
       boxShadowTertiary:
-        '0 1px 2px -2px rgba(15, 23, 42, 0.08), 0 3px 6px 0 rgba(15, 23, 42, 0.06)',
+        '0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02)',
     },
     Table: {
       headerBg: '#fafafa',
       headerColor: 'rgba(0, 0, 0, 0.88)',
-      rowHoverBg: '#f0f7ff',
+      rowHoverBg: '#fafafa',
     } as any,
     Form: {
       itemMarginBottom: 16,

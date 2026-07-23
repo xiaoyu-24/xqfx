@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import type { TableColumnsType } from 'ant-design-vue'
-import { Button, Card, Form, FormItem, Input, Modal, Select, SelectOption, Table, Tag, Textarea, message } from 'ant-design-vue'
+import { Button, Card, DatePicker, Form, FormItem, Input, Modal, Select, SelectOption, Table, Tag, Textarea, message } from 'ant-design-vue'
 import { api } from '../api'
 import { requirementStatusMeta, requirementStatusOptions, requirementTypeMeta } from '../constants/statusConfig'
 import { markChanged } from '../composables/refreshBus'
@@ -57,13 +57,12 @@ const { handleError } = useApiError()
 const tableLocale = computed(() => ({ emptyText: loading.value ? '加载中…' : '暂无待处理需求' }))
 const formatShanghai = (value: string | null | undefined) => {
   if (!value) return '—'
-  const localValue = value.replace('T', ' ')
-  const match = localValue.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/)
-  return match?.[1] ?? localValue
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/)
+  return match?.[1] ?? value.slice(0, 10)
 }
 const toDateTimeLocal = (value: string | null | undefined) => {
   const formatted = formatShanghai(value)
-  return formatted === '—' ? '' : formatted.replace(' ', 'T').slice(0, 16)
+  return formatted === '—' ? '' : formatted
 }
 
 const loadSystems = async () => {
@@ -111,7 +110,7 @@ const saveProcessing = async () => {
   try {
     await api.patch(`/requirements/${processingId.value}/processing`, {
       status: processingForm.status,
-      completedAt: processingForm.completedAt ? `${processingForm.completedAt}:00` : null,
+      completedAt: processingForm.completedAt ? (processingForm.completedAt.includes('T') ? processingForm.completedAt : `${processingForm.completedAt}T00:00:00`) : null,
       handledBy: processingForm.handledBy.trim() || null,
       completionDescription: processingForm.completionDescription,
       recordVersion: processingForm.recordVersion,
@@ -146,7 +145,6 @@ usePageRefresh('management', async () => {
           <Tag color="blue">共 {{ total }} 条</Tag>
         </div>
       </template>
-      <template #extra><span class="management-card-hint">集中跟进需求处理进度</span></template>
 
       <Table
         class="management-table"
@@ -196,20 +194,19 @@ usePageRefresh('management', async () => {
         <div class="processing-form-heading"><h3>填写需求完成情况</h3><Button type="text" html-type="button" @click="closeProcessing">关闭</Button></div>
         <p class="field-requirement-legend" data-test="processing-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
         <div class="processing-form-grid">
-          <FormItem required data-test="processing-status-field">
-            <template #label>需求状态 <span class="field-required">* 必填</span></template>
+          <FormItem required data-test="processing-status-field" label="需求状态">
             <Select v-model:value="processingForm.status" data-test="processing-status" placeholder="请选择需求状态">
               <SelectOption v-for="option in requirementStatusOptions" :key="option.value" :value="option.value">{{ option.label }}</SelectOption>
             </Select>
           </FormItem>
-          <FormItem label="完成时间（选填）">
-            <Input v-model:value="processingForm.completedAt" data-test="processing-completed-at" type="datetime-local" />
+          <FormItem label="完成时间">
+            <DatePicker v-model:value="processingForm.completedAt" data-test="processing-completed-at" value-format="YYYY-MM-DD" placeholder="选择完成时间" style="width: 100%" />
           </FormItem>
-          <FormItem label="处理人（选填）">
+          <FormItem label="处理人">
             <Input v-model:value="processingForm.handledBy" data-test="processing-handler" placeholder="请输入处理人" />
           </FormItem>
           <FormItem class="processing-form-full-width" data-test="processing-description-field">
-            <template #label>完成情况 <span class="field-optional">选填</span></template>
+            <template #label>完成情况</template>
             <Textarea v-model:value="processingForm.completionDescription" data-test="processing-description" :rows="6" placeholder="请输入处理结果、验证情况等" />
           </FormItem>
         </div>

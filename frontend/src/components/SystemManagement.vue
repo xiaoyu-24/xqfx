@@ -178,16 +178,14 @@ usePageRefresh('systems', loadSystems)
 
 <template>
   <section class="system-page" data-test="system-page">
-    <Card title="系统台账" :bordered="false">
-      <template #extra><Button type="primary" @click="showCreateSystem">新增系统</Button></template>
-
-      <p class="filter-optional-hint">筛选条件均为选填</p>
+    <Card :bordered="false">
       <div class="system-toolbar">
         <Space wrap :size="12">
           <Input v-model:value="nameFilter" data-test="name-filter" allow-clear placeholder="按系统名称筛选" style="width: 220px" />
           <Input v-model:value="ownerFilter" data-test="owner-filter" allow-clear placeholder="按负责人筛选" style="width: 200px" />
           <Input v-model:value="collaboratorFilter" data-test="collaborator-filter" allow-clear placeholder="按协助人筛选" style="width: 220px" />
           <Select v-model:value="statusFilter" data-test="status-filter" allow-clear placeholder="全部状态" :options="statusOptions" style="width: 180px" />
+          <Button type="primary" @click="showCreateSystem">新增系统</Button>
         </Space>
       </div>
 
@@ -221,16 +219,16 @@ usePageRefresh('systems', loadSystems)
     <Modal v-model:open="systemFormOpen" :title="systemFormMode === 'create' ? '新增系统' : '编辑系统'" :footer="null" destroy-on-close :get-container="false" @cancel="systemFormMode = null">
       <Form data-test="system-modal" layout="vertical" @submit.prevent="saveSystem">
         <p class="field-requirement-legend" data-test="system-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
-        <FormItem data-test="system-name-field"><template #label>系统名称 <span class="field-required">* 必填</span></template><Input v-model:value="systemForm.name" data-test="system-name" /></FormItem>
-        <FormItem><template #label>负责人 <span class="field-required">* 必填</span></template><Input v-model:value="systemForm.ownerName" data-test="system-owner" /></FormItem>
-        <FormItem data-test="system-collaborators-field" extra="多人用逗号分隔"><template #label>协助人 <span class="field-optional">选填</span></template><Input v-model:value="systemForm.collaborators" data-test="system-collaborators" placeholder="多人用逗号分隔" /></FormItem>
+        <FormItem data-test="system-name-field" label="系统名称" required><Input v-model:value="systemForm.name" data-test="system-name" /></FormItem>
+        <FormItem label="负责人" required><Input v-model:value="systemForm.ownerName" data-test="system-owner" /></FormItem>
+        <FormItem data-test="system-collaborators-field" label="协助人" extra="多人用逗号分隔"><Input v-model:value="systemForm.collaborators" data-test="system-collaborators" placeholder="多人用逗号分隔" /></FormItem>
         <Space class="form-actions"><Button html-type="button" @click="systemFormMode = null">取消</Button><Button type="primary" html-type="submit">保存</Button></Space>
       </Form>
     </Modal>
 
     <Modal v-model:open="migrationOpen" title="迁移关联需求" :footer="null" destroy-on-close :get-container="false" @cancel="migrationSourceId = null">
       <Form data-test="migration-modal" layout="vertical" @submit.prevent="migrateRequirements">
-        <FormItem><template #label>迁移目标 <span class="field-required">* 必填</span></template>
+        <FormItem label="迁移目标" required>
           <Select v-model:value="migrationTargetId" :options="[{ value: unassignedMigrationTarget, label: '暂无系统' }, ...migrationTargets.map((system) => ({ value: system.id, label: system.name }))]" />
         </FormItem>
         <Space class="form-actions"><Button html-type="button" @click="migrationSourceId = null">取消</Button><Button type="primary" html-type="submit">确认迁移</Button></Space>
