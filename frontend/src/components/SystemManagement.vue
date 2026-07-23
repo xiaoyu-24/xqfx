@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, reactive, ref } from 'vue'
+import { Button, Card, Empty, Form, FormItem, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'ant-design-vue'
 import { api } from '../api'
+import { entityStatusMeta } from '../constants/statusConfig'
+import { markChanged } from '../composables/refreshBus'
+import { useApiError } from '../composables/useApiError'
+import { usePageRefresh } from '../composables/usePageRefresh'
 
 type SystemStatus = 'ACTIVE' | 'INACTIVE'
 type SystemItem = {
@@ -19,6 +23,8 @@ const emit = defineEmits<{
   'view-requirements': [systemId: number]
 }>()
 
+const { handleError } = useApiError()
+
 const systems = ref<SystemItem[]>([])
 const loading = ref(true)
 const nameFilter = ref('')
@@ -28,7 +34,22 @@ const statusFilter = ref('')
 const systemFormMode = ref<'create' | 'edit' | null>(null)
 const systemForm = reactive({ id: 0, name: '', ownerName: '', collaborators: '', recordVersion: 0 })
 const migrationSourceId = ref<number | null>(null)
-const migrationTargetId = ref<number | null>(null)
+const unassignedMigrationTarget = '__unassigned__'
+const migrationTargetId = ref<number | typeof unassignedMigrationTarget>(unassignedMigrationTarget)
+const systemColumns = [
+  { title: '系统名称', dataIndex: 'name', key: 'name', minWidth: 160 },
+  { title: '负责人', dataIndex: 'ownerName', key: 'ownerName', width: 120 },
+  { title: '协助人', key: 'collaborators', minWidth: 160 },
+  { title: '状态', key: 'status', width: 100 },
+  { title: '版本数', dataIndex: 'versionCount', key: 'versionCount', width: 90 },
+  { title: '关联需求数', dataIndex: 'requirementCount', key: 'requirementCount', width: 110 },
+  { title: '操作', key: 'actions', width: 280, fixed: 'right' as const },
+]
+const statusOptions = [
+  { value: '', label: '全部状态' },
+  { value: 'ACTIVE', label: '启用' },
+  { value: 'INACTIVE', label: '停用' },
+]
 
 const filteredSystems = computed(() => {
   const normalizedName = nameFilter.value.trim().toLowerCase()
@@ -45,13 +66,21 @@ const filteredSystems = computed(() => {
   })
 })
 const migrationTargets = computed(() => systems.value.filter((system) => system.id !== migrationSourceId.value && system.status === 'ACTIVE'))
+const systemFormOpen = computed({
+  get: () => systemFormMode.value !== null,
+  set: (open: boolean) => { if (!open) systemFormMode.value = null },
+})
+const migrationOpen = computed({
+  get: () => migrationSourceId.value !== null,
+  set: (open: boolean) => { if (!open) migrationSourceId.value = null },
+})
 
 const loadSystems = async () => {
   loading.value = true
   try {
     systems.value = (await api.get('/systems')).data
   } catch {
-    ElMessage.error('加载系统列表失败')
+    message.error('加载系统列表失败')
   } finally {
     loading.value = false
   }
@@ -72,28 +101,27 @@ const collaboratorList = () => systemForm.collaborators.split(',').map((item) =>
 const saveSystem = async () => {
   const collaborators = collaboratorList()
   if (!systemForm.name.trim() || !systemForm.ownerName.trim()) {
-    ElMessage.warning('请填写系统名称和负责人')
+    message.warning('请填写系统名称和负责人')
     return
   }
   if (new Set(collaborators).size !== collaborators.length) {
-    ElMessage.warning('同一系统的协助人不能重复')
+    message.warning('同一系统的协助人不能重复')
     return
   }
   const body = { name: systemForm.name.trim(), ownerName: systemForm.ownerName.trim(), collaborators }
   try {
     if (systemFormMode.value === 'create') {
       await api.post('/systems', body)
-      ElMessage.success('新增系统成功')
+      message.success('新增系统成功')
     } else {
       await api.put(`/systems/${systemForm.id}`, { ...body, recordVersion: systemForm.recordVersion })
-      ElMessage.success('系统信息已更新')
+      message.success('系统信息已更新')
     }
     systemFormMode.value = null
     await loadSystems()
+    markChanged(['requirements', 'versions'])
   } catch (error: unknown) {
-    const status = (error as { response?: { status?: number } }).response?.status
-    if (status === 409) ElMessage.error('系统已被其他人修改，请刷新后重试')
-    else ElMessage.error('保存系统失败，请检查名称是否重复')
+    handleError(error, '保存系统失败，请检查名称是否重复')
   }
 }
 
@@ -101,27 +129,28 @@ const toggleSystem = async (system: SystemItem) => {
   const status: SystemStatus = system.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
   try {
     await api.patch(`/systems/${system.id}/status`, { status, recordVersion: system.recordVersion })
-    ElMessage.success(status === 'ACTIVE' ? '系统已启用' : '系统已停用')
+    message.success(status === 'ACTIVE' ? '系统已启用' : '系统已停用')
     await loadSystems()
+    markChanged(['requirements', 'versions'])
   } catch {
-    ElMessage.error('更新系统状态失败')
+    message.error('更新系统状态失败')
   }
 }
 
 const deleteSystem = async (system: SystemItem) => {
-  if (!window.confirm(`确定删除系统“${system.name}”吗？`)) return
   try {
     await api.delete(`/systems/${system.id}`)
-    ElMessage.success('系统已删除')
+    message.success('系统已删除')
     await loadSystems()
+    markChanged(['requirements', 'versions'])
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status
     if (status === 409) {
       migrationSourceId.value = system.id
-      migrationTargetId.value = null
-      ElMessage.warning('该系统存在关联需求，请先迁移需求')
+      migrationTargetId.value = unassignedMigrationTarget
+      message.warning('该系统存在关联需求，请先迁移需求')
     } else {
-      ElMessage.error('删除系统失败')
+      message.error('删除系统失败')
     }
   }
 }
@@ -129,12 +158,14 @@ const deleteSystem = async (system: SystemItem) => {
 const migrateRequirements = async () => {
   if (migrationSourceId.value === null) return
   try {
-    const { data } = await api.post(`/systems/${migrationSourceId.value}/migrate`, { targetSystemId: migrationTargetId.value })
-    ElMessage.success(`已迁移 ${data.migratedCount} 条需求`)
+    const targetSystemId = migrationTargetId.value === unassignedMigrationTarget ? null : migrationTargetId.value
+    const { data } = await api.post(`/systems/${migrationSourceId.value}/migrate`, { targetSystemId })
+    message.success(`已迁移 ${data.migratedCount} 条需求`)
     migrationSourceId.value = null
     await loadSystems()
+    markChanged(['requirements', 'versions'])
   } catch {
-    ElMessage.error('迁移需求失败，请检查目标系统状态')
+    message.error('迁移需求失败，请检查目标系统状态')
   }
 }
 
@@ -142,83 +173,68 @@ const viewRequirements = (systemId: number) => {
   emit('view-requirements', systemId)
 }
 
-onMounted(loadSystems)
+usePageRefresh('systems', loadSystems)
 </script>
 
 <template>
-  <section class="system-page">
-    <p class="filter-optional-hint">筛选条件均为选填</p>
-    <div class="system-toolbar">
-      <input v-model="nameFilter" data-test="name-filter" placeholder="按系统名称筛选">
-      <input v-model="ownerFilter" data-test="owner-filter" placeholder="按负责人筛选">
-      <input v-model="collaboratorFilter" data-test="collaborator-filter" placeholder="按协助人筛选">
-      <select v-model="statusFilter" data-test="status-filter">
-        <option value="">全部状态</option>
-        <option value="ACTIVE">启用</option>
-        <option value="INACTIVE">停用</option>
-      </select>
-      <button class="primary" type="button" @click="showCreateSystem">新增系统</button>
-    </div>
+  <section class="system-page" data-test="system-page">
+    <Card title="系统台账" :bordered="false">
+      <template #extra><Button type="primary" @click="showCreateSystem">新增系统</Button></template>
 
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>系统名称</th><th>负责人</th><th>协助人</th><th>状态</th><th>版本数</th><th>关联需求数</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="system in filteredSystems" :key="system.id">
-            <td>{{ system.name }}</td><td>{{ system.ownerName }}</td><td>{{ system.collaborators.join('、') || '—' }}</td><td>{{ system.status === 'ACTIVE' ? '启用' : '停用' }}</td><td>{{ system.versionCount }}</td><td>{{ system.requirementCount }}</td>
-            <td class="row-actions">
-              <button type="button" :data-test="`edit-system-${system.id}`" @click="showEditSystem(system)">编辑</button>
-              <button type="button" :data-test="`view-requirements-${system.id}`" @click="viewRequirements(system.id)">查看需求</button>
-              <button type="button" :data-test="`toggle-system-${system.id}`" @click="toggleSystem(system)">{{ system.status === 'ACTIVE' ? '停用' : '启用' }}</button>
-              <button type="button" class="danger" @click="deleteSystem(system)">删除</button>
-            </td>
-          </tr>
-          <tr v-if="loading"><td colspan="7" class="empty">加载中…</td></tr><tr v-else-if="filteredSystems.length === 0"><td colspan="7" class="empty">暂无系统数据，请新增系统</td></tr>
-        </tbody>
-      </table>
-    </div>
+      <p class="filter-optional-hint">筛选条件均为选填</p>
+      <div class="system-toolbar">
+        <Space wrap :size="12">
+          <Input v-model:value="nameFilter" data-test="name-filter" allow-clear placeholder="按系统名称筛选" style="width: 220px" />
+          <Input v-model:value="ownerFilter" data-test="owner-filter" allow-clear placeholder="按负责人筛选" style="width: 200px" />
+          <Input v-model:value="collaboratorFilter" data-test="collaborator-filter" allow-clear placeholder="按协助人筛选" style="width: 220px" />
+          <Select v-model:value="statusFilter" data-test="status-filter" allow-clear placeholder="全部状态" :options="statusOptions" style="width: 180px" />
+        </Space>
+      </div>
 
-    <!-- 新增/编辑系统弹窗 -->
-    <div v-if="systemFormMode" class="modal-overlay" @keydown.esc="systemFormMode = null">
-      <form class="modal-dialog" data-test="system-modal" @submit.prevent="saveSystem">
-        <div class="modal-scroll">
-        <div class="modal-header">
-          <h3>{{ systemFormMode === 'create' ? '新增系统' : '编辑系统' }}</h3>
-          <button class="modal-close" type="button" @click="systemFormMode = null">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p class="field-requirement-legend" data-test="system-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
-          <label data-test="system-name-field">系统名称 <span class="field-required">* 必填</span><input v-model="systemForm.name" data-test="system-name" required></label>
-          <label>负责人 <span class="field-required">* 必填</span><input v-model="systemForm.ownerName" data-test="system-owner" required></label>
-          <label data-test="system-collaborators-field">协助人 <span class="field-optional">选填</span><input v-model="systemForm.collaborators" data-test="system-collaborators" placeholder="多人用逗号分隔"></label>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-cancel" type="button" @click="systemFormMode = null">取消</button>
-          <button class="btn-primary" type="submit">保存</button>
-        </div>
-        </div>
-      </form>
-    </div>
+      <Table
+        class="system-table"
+        :columns="systemColumns"
+        :data-source="filteredSystems"
+        :loading="{ spinning: loading, tip: '加载中…' }"
+        :pagination="false"
+        :scroll="{ x: 1000 }"
+        row-key="id"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'collaborators'">{{ record.collaborators.join('、') || '—' }}</template>
+          <template v-else-if="column.key === 'status'"><Tag :color="entityStatusMeta(record.status).color">{{ entityStatusMeta(record.status).label }}</Tag></template>
+          <template v-else-if="column.key === 'actions'">
+            <Space :size="0" wrap>
+              <Button type="link" :data-test="`edit-system-${record.id}`" @click="showEditSystem(record as SystemItem)">编辑</Button>
+              <Button type="link" :data-test="`view-requirements-${record.id}`" @click="viewRequirements(record.id)">查看需求</Button>
+              <Button type="link" :data-test="`toggle-system-${record.id}`" @click="toggleSystem(record as SystemItem)">{{ record.status === 'ACTIVE' ? '停用' : '启用' }}</Button>
+              <Popconfirm :title="`确定删除系统“${record.name}”吗？`" ok-text="删除" cancel-text="取消" @confirm="deleteSystem(record as SystemItem)">
+                <Button danger type="link">删除</Button>
+              </Popconfirm>
+            </Space>
+          </template>
+        </template>
+        <template #emptyText><Empty v-if="!loading" description="暂无系统数据，请新增系统" /></template>
+      </Table>
+    </Card>
 
-    <!-- 迁移关联需求弹窗 -->
-    <div v-if="migrationSourceId !== null" class="modal-overlay" @keydown.esc="migrationSourceId = null">
-      <form class="modal-dialog" data-test="migration-modal" @submit.prevent="migrateRequirements">
-        <div class="modal-scroll">
-        <div class="modal-header">
-          <h3>迁移关联需求</h3>
-          <button class="modal-close" type="button" @click="migrationSourceId = null">&times;</button>
-        </div>
-        <div class="modal-body">
-          <label>迁移目标 <span class="field-required">* 必填</span>
-            <select v-model="migrationTargetId"><option :value="null">暂无系统</option><option v-for="system in migrationTargets" :key="system.id" :value="system.id">{{ system.name }}</option></select>
-          </label>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-cancel" type="button" @click="migrationSourceId = null">取消</button>
-          <button class="btn-primary" type="submit">确认迁移</button>
-        </div>
-        </div>
-      </form>
-    </div>
+    <Modal v-model:open="systemFormOpen" :title="systemFormMode === 'create' ? '新增系统' : '编辑系统'" :footer="null" destroy-on-close :get-container="false" @cancel="systemFormMode = null">
+      <Form data-test="system-modal" layout="vertical" @submit.prevent="saveSystem">
+        <p class="field-requirement-legend" data-test="system-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
+        <FormItem data-test="system-name-field"><template #label>系统名称 <span class="field-required">* 必填</span></template><Input v-model:value="systemForm.name" data-test="system-name" /></FormItem>
+        <FormItem><template #label>负责人 <span class="field-required">* 必填</span></template><Input v-model:value="systemForm.ownerName" data-test="system-owner" /></FormItem>
+        <FormItem data-test="system-collaborators-field" extra="多人用逗号分隔"><template #label>协助人 <span class="field-optional">选填</span></template><Input v-model:value="systemForm.collaborators" data-test="system-collaborators" placeholder="多人用逗号分隔" /></FormItem>
+        <Space class="form-actions"><Button html-type="button" @click="systemFormMode = null">取消</Button><Button type="primary" html-type="submit">保存</Button></Space>
+      </Form>
+    </Modal>
+
+    <Modal v-model:open="migrationOpen" title="迁移关联需求" :footer="null" destroy-on-close :get-container="false" @cancel="migrationSourceId = null">
+      <Form data-test="migration-modal" layout="vertical" @submit.prevent="migrateRequirements">
+        <FormItem><template #label>迁移目标 <span class="field-required">* 必填</span></template>
+          <Select v-model:value="migrationTargetId" :options="[{ value: unassignedMigrationTarget, label: '暂无系统' }, ...migrationTargets.map((system) => ({ value: system.id, label: system.name }))]" />
+        </FormItem>
+        <Space class="form-actions"><Button html-type="button" @click="migrationSourceId = null">取消</Button><Button type="primary" html-type="submit">确认迁移</Button></Space>
+      </Form>
+    </Modal>
   </section>
 </template>

@@ -1,5 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { ConfigProvider, Layout, LayoutContent, LayoutSider, Menu, MenuItem } from 'ant-design-vue'
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
+
+dayjs.locale('zh-cn')
+import { AppstoreOutlined, AuditOutlined, FileTextOutlined, SettingOutlined, TagsOutlined, UnorderedListOutlined } from '@ant-design/icons-vue'
+import { themeConfig } from './theme'
+import PageContainer from './components/PageContainer.vue'
 import RequirementForm from './components/RequirementForm.vue'
 import RequirementList from './components/RequirementList.vue'
 import RequirementManagement from './components/RequirementManagement.vue'
@@ -35,6 +44,10 @@ const navigateTo = (page: PageKey, skipGuard = false, preserveListPreset = false
   activePage.value = page
 }
 
+const handleMenuClick = ({ key }: { key: string | number }) => {
+  if (typeof key === 'string') navigateTo(key as PageKey)
+}
+
 const handleCreateSubmitted = () => {
   createFormDirty.value = false
   navigateTo('list', true)
@@ -48,46 +61,49 @@ const handleViewSystemRequirements = (systemId: number) => {
 </script>
 
 <template>
-  <div class="app-shell">
-    <aside class="sidebar" aria-label="主菜单">
-      <div class="brand">需求收集平台</div>
-      <nav>
-        <button
-          v-for="page in pages"
-          :key="page.key"
-          class="nav-item"
-          :class="{ active: activePage === page.key }"
-          type="button"
-          @click="navigateTo(page.key)"
-        >
-          {{ page.label }}
-        </button>
-      </nav>
-    </aside>
-    <main class="main-content">
-      <header class="page-header">
-        <h1>{{ active.label }}</h1>
-      </header>
-      <section class="page-placeholder">
-        <RequirementForm
-          v-if="activePage === 'create'"
-          @dirty-change="createFormDirty = $event"
-          @submitted="handleCreateSubmitted"
-        />
-        <KeepAlive>
-          <RequirementList
-            v-if="activePage === 'list'"
-            :preset-system-id="listPresetSystemId"
-            :preset-request-key="listPresetRequestKey"
-          />
-          <RequirementManagement v-else-if="activePage === 'management'" />
-          <SystemManagement
-            v-else-if="activePage === 'systems'"
-            @view-requirements="handleViewSystemRequirements"
-          />
-          <VersionManagement v-else-if="activePage === 'versions'" />
-        </KeepAlive>
-      </section>
-    </main>
-  </div>
+  <ConfigProvider :theme="themeConfig" :locale="zhCN">
+    <Layout class="app-shell ant-app-shell" data-test="ant-layout">
+      <LayoutSider class="sidebar ant-sidebar" :width="224">
+        <div class="brand ant-brand"><AppstoreOutlined class="brand-icon" /><span class="brand-title">需求分析平台</span></div>
+        <nav aria-label="主菜单">
+          <Menu theme="dark" mode="inline" :selected-keys="[activePage]" @click="handleMenuClick">
+            <MenuItem v-for="page in pages" :key="page.key" :data-test="`nav-${page.key}`">
+              <template #icon>
+                <FileTextOutlined v-if="page.key === 'create'" />
+                <UnorderedListOutlined v-else-if="page.key === 'list'" />
+                <AuditOutlined v-else-if="page.key === 'management'" />
+                <SettingOutlined v-else-if="page.key === 'systems'" />
+                <TagsOutlined v-else />
+              </template>
+              {{ page.label }}
+            </MenuItem>
+          </Menu>
+        </nav>
+      </LayoutSider>
+      <Layout>
+        <LayoutContent class="main-content ant-main-content">
+          <PageContainer :description="active.description">
+            <RequirementForm
+              v-if="activePage === 'create'"
+              @dirty-change="createFormDirty = $event"
+              @submitted="handleCreateSubmitted"
+            />
+            <KeepAlive>
+              <RequirementList
+                v-if="activePage === 'list'"
+                :preset-system-id="listPresetSystemId"
+                :preset-request-key="listPresetRequestKey"
+              />
+              <RequirementManagement v-else-if="activePage === 'management'" />
+              <SystemManagement
+                v-else-if="activePage === 'systems'"
+                @view-requirements="handleViewSystemRequirements"
+              />
+              <VersionManagement v-else-if="activePage === 'versions'" />
+            </KeepAlive>
+          </PageContainer>
+        </LayoutContent>
+      </Layout>
+    </Layout>
+  </ConfigProvider>
 </template>

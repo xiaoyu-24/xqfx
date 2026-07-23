@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, reactive, ref } from 'vue'
+import type { TableColumnsType } from 'ant-design-vue'
+import { Button, Card, Form, FormItem, Input, Modal, Select, SelectOption, Table, Tag, Textarea, message } from 'ant-design-vue'
 import { api } from '../api'
+import { requirementStatusMeta, requirementStatusOptions, requirementTypeMeta } from '../constants/statusConfig'
+import { markChanged } from '../composables/refreshBus'
+import { useApiError } from '../composables/useApiError'
+import { usePageRefresh } from '../composables/usePageRefresh'
 
 type SystemItem = { id: number; name: string }
 type Item = {
@@ -27,14 +32,29 @@ const items = ref<Item[]>([])
 const total = ref(0)
 const loading = ref(true)
 const processingId = ref<number | null>(null)
+const processingModalOpen = ref(false)
 const processingLoading = ref(false)
 const processingForm = reactive({ status: 'PENDING_EVALUATION', completedAt: '', handledBy: '', completionDescription: '', recordVersion: 0 })
 const pageSize = 20
+const processingOpen = computed(() => processingModalOpen.value)
 
-const statusLabel: Record<string, string> = { PENDING_EVALUATION: '待评估', CONFIRMED: '已确认', IN_DEVELOPMENT: '开发中', PAUSED: '暂停', COMPLETED: '已完成', REJECTED: '已拒绝', CLOSED: '已关闭' }
-const typeLabel: Record<string, string> = { BUG: 'BUG', REQUIREMENT: '需求' }
+const tableColumns = [
+  { title: '类型', key: 'type', width: 96 },
+  { title: '需求标题', key: 'title', width: 220 },
+  { title: '所属系统 / 版本', key: 'systemVersion', width: 190 },
+  { title: '填写人 / 部门', key: 'requesterDepartment', width: 170 },
+  { title: '当前状态', key: 'status', width: 120 },
+  { title: '填写时间', key: 'submittedAt', width: 176 },
+  { title: '最后修改', key: 'updatedAt', width: 176 },
+  { title: '操作', key: 'actions', fixed: 'right', width: 140 },
+] satisfies TableColumnsType<Item>
+const tableRecord = (record: Record<string, unknown>) => record as Item
 const systemName = (id: number | null) => id === null ? '暂无系统' : systems.value.find((system) => system.id === id)?.name ?? `系统 #${id}`
 const versionName = (item: Item) => item.targetVersionId === null ? '—' : item.targetVersionName ?? `版本 #${item.targetVersionId}`
+const displayStatus = (item: Item) => item.status ? requirementStatusMeta(item.status).label : '暂存草稿'
+const displayType = (item: Item) => item.type ? requirementTypeMeta(item.type).label : '—'
+const { handleError } = useApiError()
+const tableLocale = computed(() => ({ emptyText: loading.value ? '加载中…' : '暂无待处理需求' }))
 const formatShanghai = (value: string | null | undefined) => {
   if (!value) return '—'
   const localValue = value.replace('T', ' ')
@@ -51,7 +71,7 @@ const loadSystems = async () => {
     const { data } = await api.get('/systems')
     systems.value = Array.isArray(data) ? data : []
   } catch {
-    ElMessage.warning('系统信息加载失败')
+    message.warning('系统信息加载失败')
   }
 }
 
@@ -62,7 +82,7 @@ const query = async () => {
     items.value = data.content ?? []
     total.value = data.totalElements ?? 0
   } catch {
-    ElMessage.error('加载管理需求失败')
+    message.error('加载管理需求失败')
   } finally {
     loading.value = false
   }
@@ -72,6 +92,7 @@ const openProcessing = async (item: Item) => {
   try {
     const { data } = await api.get(`/requirements/${item.id}`)
     processingId.value = item.id
+    processingModalOpen.value = true
     Object.assign(processingForm, {
       status: data.status ?? 'PENDING_EVALUATION',
       completedAt: toDateTimeLocal(data.completedAt),
@@ -80,7 +101,7 @@ const openProcessing = async (item: Item) => {
       recordVersion: data.recordVersion ?? item.recordVersion ?? 0,
     })
   } catch {
-    ElMessage.error('加载处理信息失败')
+    message.error('加载处理信息失败')
   }
 }
 
@@ -95,49 +116,196 @@ const saveProcessing = async () => {
       completionDescription: processingForm.completionDescription,
       recordVersion: processingForm.recordVersion,
     })
-    processingId.value = null
-    ElMessage.success('处理信息已保存')
+    closeProcessing()
+    message.success('处理信息已保存')
+    markChanged(['management', 'requirements'])
     await query()
   } catch (error: unknown) {
-    const status = (error as { response?: { status?: number } }).response?.status
-    if (status === 409) ElMessage.error('需求已被其他人修改，请刷新后重试')
-    else ElMessage.error('保存处理信息失败')
+    handleError(error, '保存处理信息失败')
   } finally {
     processingLoading.value = false
   }
 }
 
-onMounted(async () => {
-  await loadSystems()
-  await query()
-})
+const closeProcessing = () => {
+  processingModalOpen.value = false
+  processingId.value = null
+}
+
+usePageRefresh('management', async () => {
+  await Promise.all([loadSystems(), query()])
+}, { isPaused: () => processingOpen.value })
 </script>
 
 <template>
   <section class="management-section" data-test="management-page">
-    <div class="detail-header"><h2>待处理需求</h2><span class="muted">共 {{ total }} 条</span></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>类型</th><th>需求标题</th><th>所属系统 / 版本</th><th>填写人 / 部门</th><th>当前状态</th><th>填写时间</th><th>最后修改</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="item in items" :key="item.id"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.status ? statusLabel[item.status] : '暂存草稿' }}</td><td>{{ formatShanghai(item.submittedAt || item.updatedAt) }}</td><td>{{ formatShanghai(item.updatedAt) }}</td><td><button type="button" :data-test="`manage-${item.id}`" @click="openProcessing(item)">填写处理情况</button></td></tr>
-          <tr v-if="loading"><td colspan="8" class="empty">加载中…</td></tr><tr v-else-if="items.length === 0"><td colspan="8" class="empty">暂无待处理需求</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div v-if="processingId !== null" class="processing-form-wrap">
-      <form class="requirement-edit" data-test="processing-form" @submit.prevent="saveProcessing">
-        <div class="detail-header"><h3>填写需求完成情况</h3><button class="secondary" type="button" @click="processingId = null">返回管理需求</button></div>
-        <p class="field-requirement-legend" data-test="processing-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
-        <div class="form-grid">
-          <label data-test="processing-status-field">需求状态 <span class="field-required">* 必填</span><select v-model="processingForm.status" data-test="processing-status" required><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
-          <label>完成时间 <span class="field-optional">选填</span><input v-model="processingForm.completedAt" data-test="processing-completed-at" type="datetime-local"></label>
-          <label>处理人 <span class="field-optional">选填</span><input v-model="processingForm.handledBy" data-test="processing-handler" placeholder="请输入处理人"></label>
-          <label class="full-width" data-test="processing-description-field">完成情况 <span class="field-optional">选填</span><textarea v-model="processingForm.completionDescription" data-test="processing-description" rows="6" placeholder="请输入处理结果、验证情况等"></textarea></label>
+    <Card class="management-card" data-test="management-card" :bordered="false">
+      <template #title>
+        <div class="management-card-title">
+          <span>待处理需求</span>
+          <Tag color="blue">共 {{ total }} 条</Tag>
         </div>
-        <div class="form-actions"><button class="primary" type="submit" data-test="processing-save" :disabled="processingLoading">{{ processingLoading ? '保存中…' : '保存处理情况' }}</button></div>
-      </form>
-    </div>
+      </template>
+      <template #extra><span class="management-card-hint">集中跟进需求处理进度</span></template>
+
+      <Table
+        class="management-table"
+        data-test="management-table"
+        :columns="tableColumns"
+        :data-source="items"
+        :loading="loading"
+        :locale="tableLocale"
+        :pagination="false"
+        row-key="id"
+        :scroll="{ x: 1280 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'type'">
+            <Tag :color="record.type ? requirementTypeMeta(record.type).color : 'default'">{{ displayType(tableRecord(record)) }}</Tag>
+          </template>
+          <template v-else-if="column.key === 'title'">
+            <span class="management-title">{{ record.title || '未命名草稿' }}</span>
+          </template>
+          <template v-else-if="column.key === 'systemVersion'">
+            <div class="management-two-line-cell">
+              <span>{{ systemName(record.systemId) }}</span>
+              <span class="management-secondary">{{ versionName(tableRecord(record)) }}</span>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'requesterDepartment'">
+            <div class="management-two-line-cell">
+              <span>{{ record.requesterName || '—' }}</span>
+              <span class="management-secondary">{{ record.department || '—' }}</span>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'status'">
+            <Tag :color="record.status ? requirementStatusMeta(record.status).color : 'default'" :data-test="`management-status-${record.id}`">{{ displayStatus(tableRecord(record)) }}</Tag>
+          </template>
+          <template v-else-if="column.key === 'submittedAt'">{{ formatShanghai(record.submittedAt || record.updatedAt) }}</template>
+          <template v-else-if="column.key === 'updatedAt'">{{ formatShanghai(record.updatedAt) }}</template>
+          <template v-else-if="column.key === 'actions'">
+            <Button type="link" :data-test="`manage-${record.id}`" @click="openProcessing(tableRecord(record))">填写处理情况</Button>
+          </template>
+        </template>
+      </Table>
+    </Card>
+
+    <Modal v-model:open="processingModalOpen" title="填写处理情况" :mask-closable="false" :footer="null" destroy-on-close :get-container="false" @cancel="closeProcessing">
+      <div class="processing-modal-content" data-test="processing-modal">
+      <Form class="processing-form" data-test="processing-form" layout="vertical" :model="processingForm" @submit.prevent="saveProcessing">
+        <div class="processing-form-heading"><h3>填写需求完成情况</h3><Button type="text" html-type="button" @click="closeProcessing">关闭</Button></div>
+        <p class="field-requirement-legend" data-test="processing-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
+        <div class="processing-form-grid">
+          <FormItem required data-test="processing-status-field">
+            <template #label>需求状态 <span class="field-required">* 必填</span></template>
+            <Select v-model:value="processingForm.status" data-test="processing-status" placeholder="请选择需求状态">
+              <SelectOption v-for="option in requirementStatusOptions" :key="option.value" :value="option.value">{{ option.label }}</SelectOption>
+            </Select>
+          </FormItem>
+          <FormItem label="完成时间（选填）">
+            <Input v-model:value="processingForm.completedAt" data-test="processing-completed-at" type="datetime-local" />
+          </FormItem>
+          <FormItem label="处理人（选填）">
+            <Input v-model:value="processingForm.handledBy" data-test="processing-handler" placeholder="请输入处理人" />
+          </FormItem>
+          <FormItem class="processing-form-full-width" data-test="processing-description-field">
+            <template #label>完成情况 <span class="field-optional">选填</span></template>
+            <Textarea v-model:value="processingForm.completionDescription" data-test="processing-description" :rows="6" placeholder="请输入处理结果、验证情况等" />
+          </FormItem>
+        </div>
+        <div class="processing-form-actions">
+          <Button html-type="button" @click="closeProcessing">取消</Button>
+          <Button type="primary" html-type="submit" data-test="processing-save" :loading="processingLoading">保存处理情况</Button>
+        </div>
+      </Form>
+      </div>
+    </Modal>
   </section>
 </template>
+
+<style scoped>
+.management-section {
+  min-width: 0;
+}
+
+.management-card :deep(.ant-card-head-title) {
+  padding: 14px 0;
+}
+
+.management-card-title,
+.processing-form-heading,
+.processing-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.management-card-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.management-card-hint,
+.management-secondary {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.management-table :deep(.ant-table-cell) {
+  vertical-align: middle;
+}
+
+.management-title {
+  color: rgba(0, 0, 0, 0.88);
+  font-weight: 500;
+}
+
+.management-two-line-cell {
+  display: grid;
+  gap: 3px;
+}
+
+.processing-modal-content {
+  padding-top: 4px;
+}
+
+.processing-form-heading {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.processing-form-heading h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.processing-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 20px;
+}
+
+.processing-form-full-width {
+  grid-column: 1 / -1;
+}
+
+.processing-form-actions {
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .management-card-hint {
+    display: none;
+  }
+
+  .processing-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .processing-form-full-width {
+    grid-column: auto;
+  }
+}
+</style>
 

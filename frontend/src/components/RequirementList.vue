@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import type { TableColumnsType } from 'ant-design-vue'
+import { Button, Card, Col, DatePicker, Descriptions, DescriptionsItem, Form, FormItem, Input, Modal, Pagination, Row, Select, Space, Table, Tag, message } from 'ant-design-vue'
+import { InboxOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
+import { DEPARTMENTS } from '../constants/departments'
+import { requirementStatusMeta, requirementTypeMeta, saveTypeMeta } from '../constants/statusConfig'
+import { markChanged } from '../composables/refreshBus'
+import { useApiError } from '../composables/useApiError'
+import { usePageRefresh } from '../composables/usePageRefresh'
 
 const props = withDefaults(defineProps<{
   presetSystemId?: number | null
@@ -42,12 +49,72 @@ const editVersions = ref<VersionItem[]>([])
 const editAttachments = ref<Attachment[]>([])
 const editSelectedFiles = ref<File[]>([])
 const editUploading = ref(false)
+const editIsDragging = ref(false)
+const editAttachmentInput = ref<HTMLInputElement | null>(null)
 const editForm = reactive({ requesterName: '', department: '', title: '', type: '', content: '', systemId: '', targetVersionId: '', periodStartDate: '', periodEndDate: '', status: '', recordVersion: 0 })
 let previewRefreshTimer: ReturnType<typeof setTimeout> | undefined
+const hasModalOpen = computed(() => editingId.value !== null || selectedRequirement.value !== null || previewAttachment.value !== null)
+const allowedAttachmentExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'])
+const { handleError } = useApiError()
 
-const statusLabel: Record<string, string> = { PENDING_EVALUATION: '待评估', CONFIRMED: '已确认', IN_DEVELOPMENT: '开发中', PAUSED: '暂停', COMPLETED: '已完成', REJECTED: '已拒绝', CLOSED: '已关闭' }
-const typeLabel: Record<string, string> = { BUG: 'BUG', REQUIREMENT: '需求' }
-const saveTypeLabel: Record<string, string> = { SUBMITTED: '正式需求', DRAFT: '草稿' }
+const systemFilterOptions = computed(() => [
+  { label: '全部系统', value: '' },
+  { label: '暂无系统', value: 'none' },
+  ...systems.value.map((system) => ({ label: system.name, value: String(system.id) })),
+])
+const versionFilterOptions = computed(() => [
+  { label: '全部版本', value: '' },
+  ...versions.value.map((version) => ({ label: version.name, value: String(version.id) })),
+])
+const typeOptions = [
+  { label: '全部类型', value: '' },
+  { label: 'BUG', value: 'BUG' },
+  { label: '需求', value: 'REQUIREMENT' },
+]
+const statusOptions = [
+  { label: '全部状态', value: '' },
+  { label: '待评估', value: 'PENDING_EVALUATION' },
+  { label: '已确认', value: 'CONFIRMED' },
+  { label: '开发中', value: 'IN_DEVELOPMENT' },
+  { label: '暂停', value: 'PAUSED' },
+  { label: '已完成', value: 'COMPLETED' },
+  { label: '已拒绝', value: 'REJECTED' },
+  { label: '已关闭', value: 'CLOSED' },
+]
+const saveTypeOptions = [
+  { label: '全部', value: '' },
+  { label: '正式需求', value: 'SUBMITTED' },
+  { label: '草稿', value: 'DRAFT' },
+]
+const requirementColumns = [
+  { title: '类型', key: 'type', width: 100 },
+  { title: '需求标题', key: 'title', width: 220 },
+  { title: '所属系统 / 版本', key: 'systemVersion', width: 190 },
+  { title: '填写人 / 部门', key: 'requester', width: 150 },
+  { title: '周期', key: 'period', width: 210 },
+  { title: '状态', key: 'status', width: 120 },
+  { title: '填写时间', key: 'submittedAt', width: 175 },
+  { title: '操作', key: 'actions', fixed: 'right' as const, width: 200 },
+] satisfies TableColumnsType<Item>
+const tableRecord = (record: Record<string, unknown>) => record as Item
+const editingOpen = computed({
+  get: () => editingId.value !== null,
+  set: (open: boolean) => { if (!open) editingId.value = null },
+})
+const detailOpen = computed({
+  get: () => selectedRequirement.value !== null,
+  set: (open: boolean) => {
+    if (!open) {
+      selectedRequirement.value = null
+      detailAttachments.value = []
+      clearPreviewRefresh()
+    }
+  },
+})
+const previewOpen = computed({
+  get: () => previewAttachment.value !== null,
+  set: (open: boolean) => { if (!open) previewAttachment.value = null },
+})
 const systemName = (id: number | null) => id === null ? '暂无系统' : systems.value.find((system) => system.id === id)?.name ?? `系统 #${id}`
 const versionName = (id: number | null, name?: string | null) => id === null ? '—' : name ?? versions.value.find((version) => version.id === id)?.name ?? `版本 #${id}`
 const formatShanghai = (value: string | null | undefined) => {
@@ -61,7 +128,7 @@ const loadSystems = async () => {
     const { data } = await api.get('/systems')
     systems.value = Array.isArray(data) ? data : []
   } catch {
-    ElMessage.warning('系统筛选项加载失败')
+    message.warning('系统筛选项加载失败')
   }
 }
 
@@ -73,7 +140,7 @@ const loadVersions = async () => {
     const { data } = await api.get(`/systems/${filters.systemId}/versions`)
     versions.value = Array.isArray(data) ? data : []
   } catch {
-    ElMessage.warning('版本筛选项加载失败')
+    message.warning('版本筛选项加载失败')
   }
 }
 
@@ -99,7 +166,7 @@ const query = async (page = 0) => {
     totalPages.value = data.totalPages
     currentPage.value = page
   } catch {
-    ElMessage.error('查询失败，请检查筛选条件后重试')
+    message.error('查询失败，请检查筛选条件后重试')
   } finally {
     loading.value = false
   }
@@ -132,7 +199,7 @@ const viewDetails = async (id: number) => {
     detailAttachments.value = attachments.data
     schedulePreviewRefresh()
   } catch {
-    ElMessage.error('加载需求详情失败')
+    message.error('加载需求详情失败')
   }
 }
 
@@ -176,9 +243,9 @@ const retryAttachmentPreview = async (attachment: Attachment) => {
       if (index >= 0) list.value[index] = data
     }
     schedulePreviewRefresh()
-    ElMessage.success('已提交预览生成任务')
+    message.success('已提交预览生成任务')
   } catch {
-    ElMessage.error('重新生成预览失败')
+    message.error('重新生成预览失败')
   }
 }
 
@@ -187,10 +254,11 @@ const deleteRequirement = async (item: Item) => {
   try {
     await api.delete(`/requirements/${item.id}`)
     if (selectedRequirement.value?.id === item.id) selectedRequirement.value = null
-    ElMessage.success('需求已删除')
+    message.success('需求已删除')
     await query(currentPage.value)
+    markChanged(['requirements', 'management'])
   } catch {
-    ElMessage.error('删除需求失败')
+    message.error('删除需求失败')
   }
 }
 
@@ -201,7 +269,7 @@ const loadEditVersions = async () => {
     const { data } = await api.get(`/systems/${editForm.systemId}/versions`)
     editVersions.value = Array.isArray(data) ? data : []
   } catch {
-    ElMessage.warning('编辑时加载版本失败')
+    message.warning('编辑时加载版本失败')
   }
 }
 
@@ -224,14 +292,28 @@ const openEdit = async (id: number) => {
     }
     await loadEditVersions()
   } catch {
-    ElMessage.error('加载编辑数据失败')
+    message.error('加载编辑数据失败')
   }
 }
 
 const selectEditFiles = (event: Event) => {
   const input = event.target as HTMLInputElement
-  editSelectedFiles.value = Array.from(input.files ?? [])
+  addEditFiles(Array.from(input.files ?? []))
+  input.value = ''
 }
+
+const addEditFiles = (files: File[]) => {
+  const accepted = files.filter((file) => {
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+    return allowedAttachmentExtensions.has(extension) && file.size <= 100 * 1024 * 1024
+  })
+  editSelectedFiles.value = [...editSelectedFiles.value, ...accepted.filter((file) => !editSelectedFiles.value.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified))]
+}
+const dropEditFiles = (event: DragEvent) => {
+  editIsDragging.value = false
+  addEditFiles(Array.from(event.dataTransfer?.files ?? []))
+}
+const openEditAttachmentPicker = () => editAttachmentInput.value?.click()
 
 const uploadEditAttachments = async () => {
   if (editingId.value === null || editSelectedFiles.value.length === 0) return
@@ -245,9 +327,10 @@ const uploadEditAttachments = async () => {
     }
     editSelectedFiles.value = []
     schedulePreviewRefresh()
-    ElMessage.success('附件上传成功')
+    message.success('附件上传成功')
+    markChanged(['requirements', 'management'])
   } catch {
-    ElMessage.error('附件上传失败，未完成的文件可重新选择后上传')
+    message.error('附件上传失败，未完成的文件可重新选择后上传')
   } finally {
     editUploading.value = false
   }
@@ -258,9 +341,10 @@ const deleteEditAttachment = async (attachment: Attachment) => {
   try {
     await api.delete(`/attachments/${attachment.id}`)
     editAttachments.value = editAttachments.value.filter((item) => item.id !== attachment.id)
-    ElMessage.success('附件已删除')
+    message.success('附件已删除')
+    markChanged(['requirements', 'management'])
   } catch {
-    ElMessage.error('删除附件失败')
+    message.error('删除附件失败')
   }
 }
 
@@ -271,6 +355,10 @@ const changeEditSystem = async () => {
 
 const saveEdit = async (submitDraft = false) => {
   if (editingId.value === null) return
+  if (editForm.department && !(DEPARTMENTS as readonly string[]).includes(editForm.department)) {
+    message.error('请从指定部门列表中重新选择部门后再保存')
+    return
+  }
   const body = {
     requesterName: editForm.requesterName, department: editForm.department, title: editForm.title, type: editForm.type || null, content: editForm.content,
     systemId: editForm.systemId ? Number(editForm.systemId) : null, targetVersionId: editForm.targetVersionId ? Number(editForm.targetVersionId) : null,
@@ -282,113 +370,101 @@ const saveEdit = async (submitDraft = false) => {
     const { data } = await api.put(path, body)
     if (data?.id) selectedRequirement.value = data
     editingId.value = null
-    ElMessage.success(isDraftSave ? '草稿已更新' : submitDraft ? '草稿已正式提交' : '需求已更新')
+    message.success(isDraftSave ? '草稿已更新' : submitDraft ? '草稿已正式提交' : '需求已更新')
     await query(currentPage.value)
+    markChanged(['requirements', 'management'])
   } catch (error: unknown) {
-    const status = (error as { response?: { status?: number } }).response?.status
-    if (status === 409) ElMessage.error('需求已被其他人修改，请刷新后重试')
-    else ElMessage.error('保存需求失败，请检查必填项和系统版本')
+    handleError(error, '保存需求失败，请检查必填项和系统版本')
   }
 }
 
-onMounted(async () => {
+usePageRefresh('requirements', async () => {
   await loadSystems()
-  if (!props.presetSystemId) await query()
-})
+  if (props.presetSystemId !== null) await applyPresetSystemFilter(props.presetSystemId)
+  else await query(currentPage.value)
+}, { isPaused: () => hasModalOpen.value || editUploading.value })
 onBeforeUnmount(clearPreviewRefresh)
 </script>
 
 <template>
   <section class="list-page">
-    <p class="filter-optional-hint" data-test="filter-optional-hint">筛选条件均为选填</p>
-    <div class="filter-grid">
-      <label>关键词 <input v-model="filters.keyword" placeholder="标题或需求内容"></label>
-      <label>所属系统 <select v-model="filters.systemId" data-test="system-filter"><option value="">全部系统</option><option value="none">暂无系统</option><option v-for="system in systems" :key="system.id" :value="String(system.id)">{{ system.name }}</option></select></label>
-      <label>目标版本 <select v-model="filters.targetVersionId" :disabled="!filters.systemId || filters.systemId === 'none'"><option value="">全部版本</option><option v-for="version in versions" :key="version.id" :value="String(version.id)">{{ version.name }}</option></select></label>
-      <label>部门 <input v-model="filters.department" placeholder="请输入部门"></label>
-      <label>填写人 <input v-model="filters.requesterName" placeholder="请输入填写人"></label>
-      <label>填写时间起 <input v-model="filters.submittedFrom" type="date"></label>
-      <label>填写时间止 <input v-model="filters.submittedTo" type="date"></label>
-      <label>需求状态 <select v-model="filters.status"><option value="">全部状态</option><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
-      <label>类型 <select v-model="filters.type"><option value="">全部类型</option><option value="BUG">BUG</option><option value="REQUIREMENT">需求</option></select></label>
-      <label>保存类型 <select v-model="filters.saveType"><option value="">全部</option><option value="SUBMITTED">正式需求</option><option value="DRAFT">草稿</option></select></label>
-      <label>周期起 <input v-model="filters.periodOverlapStart" type="date"></label>
-      <label>周期止 <input v-model="filters.periodOverlapEnd" type="date"></label>
-    </div>
-    <div class="filter-actions"><button class="primary" type="button" data-test="query" :disabled="loading" @click="query()">查询</button><button class="secondary" type="button" @click="reset">重置</button></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>类型</th><th>需求标题</th><th>所属系统 / 版本</th><th>填写人 / 部门</th><th>周期</th><th>状态</th><th>填写时间</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="item in items" :key="item.id"><td>{{ item.type ? typeLabel[item.type] : '—' }}</td><td>{{ item.title || '未命名草稿' }}</td><td>{{ systemName(item.systemId) }} / {{ versionName(item.targetVersionId, item.targetVersionName) }}</td><td>{{ item.requesterName || '—' }} / {{ item.department || '—' }}</td><td>{{ item.periodStartDate && item.periodEndDate ? `${item.periodStartDate} 至 ${item.periodEndDate}` : '—' }}</td><td>{{ item.status ? statusLabel[item.status] : saveTypeLabel[item.saveType ?? 'DRAFT'] }}</td><td>{{ formatShanghai(item.submittedAt || item.updatedAt) }}</td><td class="row-actions"><button type="button" :data-test="`view-${item.id}`" @click="viewDetails(item.id)">查看详情</button><button type="button" :data-test="`edit-${item.id}`" @click="openEdit(item.id)">编辑</button><button class="danger" type="button" :data-test="`delete-${item.id}`" @click="deleteRequirement(item)">删除</button></td></tr>
-          <tr v-if="loading"><td colspan="8" class="empty">加载中…</td></tr><tr v-else-if="items.length === 0"><td colspan="8" class="empty">暂无需求</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div v-if="editingId !== null" class="modal-overlay" @keydown.esc="editingId = null">
-      <form class="modal-dialog modal-dialog-lg" data-test="edit-form" @submit.prevent="saveEdit()">
-        <div class="modal-scroll">
-        <div class="modal-header">
-          <h3>{{ editingSaveType === 'DRAFT' ? '编辑草稿' : '编辑需求' }}</h3>
-          <button class="modal-close" type="button" @click="editingId = null">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p class="field-requirement-legend" data-test="edit-field-legend">带 <span class="field-required">*</span> 的项目为必填项；草稿可暂存未完成内容，正式提交时必须填写完整。</p>
-          <div class="form-grid">
-            <label>姓名 <span class="field-required">* 必填</span><input v-model="editForm.requesterName" :required="editingSaveType !== 'DRAFT'"></label><label>部门 <span class="field-required">* 必填</span><input v-model="editForm.department" :required="editingSaveType !== 'DRAFT'"></label>
-            <label class="full-width" data-test="edit-title-field">需求标题 <span class="field-required">* 必填</span><input v-model="editForm.title" data-test="edit-title" :required="editingSaveType !== 'DRAFT'"></label>
-            <label>类型 <span class="field-required">* 必填</span><select v-model="editForm.type" :required="editingSaveType !== 'DRAFT'"><option value="">请选择类型</option><option value="BUG">BUG</option><option value="REQUIREMENT">需求</option></select></label>
-            <label>需求状态 <span :class="editingSaveType === 'DRAFT' ? 'field-optional' : 'field-required'">{{ editingSaveType === 'DRAFT' ? '正式提交时生成' : '* 必填' }}</span><select v-model="editForm.status" data-test="edit-status" :disabled="editingSaveType === 'DRAFT'"><option value="PENDING_EVALUATION">待评估</option><option value="CONFIRMED">已确认</option><option value="IN_DEVELOPMENT">开发中</option><option value="PAUSED">暂停</option><option value="COMPLETED">已完成</option><option value="REJECTED">已拒绝</option><option value="CLOSED">已关闭</option></select></label>
-            <label>所属系统 <span class="field-optional">选填</span><select v-model="editForm.systemId" @change="changeEditSystem"><option value="">暂无系统</option><option v-for="system in systems" :key="system.id" :value="String(system.id)" :disabled="system.status !== 'ACTIVE' && String(system.id) !== editForm.systemId">{{ system.name }}{{ system.status === 'ACTIVE' ? '' : '（已停用）' }}</option></select></label>
-            <label>目标版本 <span class="field-optional">选填</span><select v-model="editForm.targetVersionId" :disabled="!editForm.systemId"><option value="">请选择版本（可选）</option><option v-for="version in editVersions" :key="version.id" :value="String(version.id)" :disabled="version.status !== 'ACTIVE' && String(version.id) !== editForm.targetVersionId">{{ version.name }}{{ version.status === 'ACTIVE' ? '' : '（已停用）' }}</option></select></label>
-            <div data-test="edit-period-field"><span class="field-label">需求时间周期 <span class="field-optional">选填</span></span><div class="date-range"><input v-model="editForm.periodStartDate" type="date"><span>至</span><input v-model="editForm.periodEndDate" type="date"></div></div>
-            <label class="full-width">需求内容 <span class="field-required">* 必填</span><textarea v-model="editForm.content" rows="8" :required="editingSaveType !== 'DRAFT'"></textarea></label>
-            <div class="full-width edit-attachments">
-              <span class="field-label">附件 <span class="field-optional">选填</span></span>
-              <div class="attachment-upload"><input data-test="edit-attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectEditFiles"><button class="secondary" type="button" data-test="edit-attachment-upload" :disabled="editUploading || editSelectedFiles.length === 0" @click="uploadEditAttachments">{{ editUploading ? '上传中…' : '上传附件' }}</button></div>
-              <ul v-if="editAttachments.length" class="attachment-list"><li v-for="attachment in editAttachments" :key="attachment.id"><div class="attachment-row"><span><strong>{{ attachment.originalName }}</strong>（{{ attachment.sizeBytes }} 字节）</span><span v-if="previewStateLabel(attachment)" class="attachment-preview-state">{{ previewStateLabel(attachment) }}</span><span class="row-actions"><button v-if="canPreview(attachment)" type="button" :data-test="`edit-attachment-open-preview-${attachment.id}`" @click="openAttachmentPreview(attachment)">预览</button><button v-else-if="attachment.previewStatus === 'FAILED'" type="button" @click="retryAttachmentPreview(attachment)">重新生成</button><a :href="`/api/attachments/${attachment.id}`" :download="attachment.originalName">下载原文件</a><button class="danger" type="button" :data-test="`edit-attachment-delete-${attachment.id}`" @click="deleteEditAttachment(attachment)">删除</button></span></div><img v-if="attachment.contentType.startsWith('image/')" :src="`/api/attachments/${attachment.id}`" :alt="`${attachment.originalName} 预览`"></li></ul>
-              <p v-else class="edit-no-attachment">暂无附件</p>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-cancel" type="button" @click="editingId = null">取消</button>
-          <button v-if="editingSaveType === 'DRAFT'" class="btn-cancel" type="button" :data-test="`save-draft-${editingId}`" @click="saveEdit()">保存草稿</button>
-          <button class="btn-primary" :type="editingSaveType === 'DRAFT' ? 'button' : 'submit'" :data-test="editingSaveType === 'DRAFT' ? `submit-draft-${editingId}` : undefined" @click="editingSaveType === 'DRAFT' && saveEdit(true)">{{ editingSaveType === 'DRAFT' ? '正式提交' : '保存修改' }}</button>
-        </div>
-        </div>
+    <Card class="filter-card" :bordered="false">
+      <p class="filter-optional-hint" data-test="filter-optional-hint">筛选条件均为选填</p>
+      <Form layout="vertical" class="filter-form">
+        <Row :gutter="[16, 4]">
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="关键词"><Input v-model:value="filters.keyword" placeholder="标题或需求内容" allow-clear /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="所属系统"><Select v-model:value="filters.systemId" data-test="system-filter" :options="systemFilterOptions" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="目标版本"><Select v-model:value="filters.targetVersionId" :options="versionFilterOptions" :disabled="!filters.systemId || filters.systemId === 'none'" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="部门"><Select v-model:value="filters.department" data-test="department-filter" allow-clear placeholder="全部部门" :options="DEPARTMENTS.map((department) => ({ label: department, value: department }))" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="填写人"><Input v-model:value="filters.requesterName" placeholder="请输入填写人" allow-clear /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="填写时间起"><DatePicker v-model:value="filters.submittedFrom" value-format="YYYY-MM-DD" placeholder="开始日期" style="width: 100%" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="填写时间止"><DatePicker v-model:value="filters.submittedTo" value-format="YYYY-MM-DD" placeholder="结束日期" style="width: 100%" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="需求状态"><Select v-model:value="filters.status" :options="statusOptions" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="类型"><Select v-model:value="filters.type" :options="typeOptions" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="保存类型"><Select v-model:value="filters.saveType" :options="saveTypeOptions" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="周期起"><DatePicker v-model:value="filters.periodOverlapStart" value-format="YYYY-MM-DD" placeholder="周期开始" style="width: 100%" /></FormItem></Col>
+          <Col :xs="24" :sm="12" :lg="6"><FormItem label="周期止"><DatePicker v-model:value="filters.periodOverlapEnd" value-format="YYYY-MM-DD" placeholder="周期结束" style="width: 100%" /></FormItem></Col>
+        </Row>
+        <div class="filter-actions"><Space><Button type="primary" data-test="query" @click="query()">查询</Button><Button @click="reset">重置</Button></Space></div>
+      </Form>
+    </Card>
+    <Card class="list-table-card" :bordered="false">
+      <Table class="requirement-table" :columns="requirementColumns" :data-source="items" :loading="loading" :pagination="false" :scroll="{ x: 1365 }" :row-key="(item: Item) => item.id">
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'type'"><Tag :color="record.type ? requirementTypeMeta(record.type).color : 'default'">{{ record.type ? requirementTypeMeta(record.type).label : '—' }}</Tag></template>
+          <template v-else-if="column.key === 'title'"><strong>{{ record.title || '未命名草稿' }}</strong></template>
+          <template v-else-if="column.key === 'systemVersion'">{{ systemName(record.systemId) }} / {{ versionName(record.targetVersionId, record.targetVersionName) }}</template>
+          <template v-else-if="column.key === 'requester'">{{ record.requesterName || '—' }} / {{ record.department || '—' }}</template>
+          <template v-else-if="column.key === 'period'">{{ record.periodStartDate && record.periodEndDate ? `${record.periodStartDate} 至 ${record.periodEndDate}` : '—' }}</template>
+          <template v-else-if="column.key === 'status'"><Tag :color="record.status ? requirementStatusMeta(record.status).color : saveTypeMeta(record.saveType ?? 'DRAFT').color">{{ record.status ? requirementStatusMeta(record.status).label : saveTypeMeta(record.saveType ?? 'DRAFT').label }}</Tag></template>
+          <template v-else-if="column.key === 'submittedAt'">{{ formatShanghai(record.submittedAt || record.updatedAt) }}</template>
+          <template v-else-if="column.key === 'actions'"><Space size="small"><Button type="link" size="small" :data-test="`view-${record.id}`" @click="viewDetails(tableRecord(record).id)">查看详情</Button><Button type="link" size="small" :data-test="`edit-${record.id}`" @click="openEdit(tableRecord(record).id)">编辑</Button><Button danger type="link" size="small" :data-test="`delete-${record.id}`" @click="deleteRequirement(tableRecord(record))">删除</Button></Space></template>
+        </template>
+        <template #emptyText>{{ loading ? '加载中…' : '暂无需求' }}</template>
+      </Table>
+      <div class="pagination-bar"><span>共 {{ total }} 条</span><Pagination :current="currentPage + 1" :total="total" :page-size="pageSize" :show-size-changer="false" :disabled="loading" @change="(page) => query(page - 1)" /></div>
+    </Card>
+    <Modal v-model:open="editingOpen" :title="editingSaveType === 'DRAFT' ? '编辑草稿' : '编辑需求'" :footer="null" :mask-closable="false" destroy-on-close :get-container="false" width="900px">
+      <form class="ant-modal-form" data-test="edit-form" @submit.prevent="saveEdit()">
+        <p class="field-requirement-legend" data-test="edit-field-legend">带 <span class="field-required">*</span> 的项目为必填项；草稿可暂存未完成内容，正式提交时必须填写完整。</p>
+        <Row :gutter="[16, 4]">
+          <Col :span="12"><FormItem><template #label>姓名 <span class="field-required">* 必填</span></template><Input v-model:value="editForm.requesterName" :required="editingSaveType !== 'DRAFT'" /></FormItem></Col>
+          <Col :span="12"><FormItem><template #label>部门 <span class="field-required">* 必填</span></template><Select v-model:value="editForm.department" data-test="edit-department-select" :options="DEPARTMENTS.map((department) => ({ label: department, value: department }))" /></FormItem></Col>
+          <Col :span="24"><FormItem data-test="edit-title-field"><template #label>需求标题 <span class="field-required">* 必填</span></template><Input v-model:value="editForm.title" data-test="edit-title" :required="editingSaveType !== 'DRAFT'" /></FormItem></Col>
+          <Col :span="12"><FormItem><template #label>类型 <span class="field-required">* 必填</span></template><Select v-model:value="editForm.type" :options="typeOptions.slice(1)" :required="editingSaveType !== 'DRAFT'" /></FormItem></Col>
+          <Col :span="12"><FormItem><template #label>需求状态 <span :class="editingSaveType === 'DRAFT' ? 'field-optional' : 'field-required'">{{ editingSaveType === 'DRAFT' ? '正式提交时生成' : '* 必填' }}</span></template><Select v-model:value="editForm.status" data-test="edit-status" :options="statusOptions.slice(1)" :disabled="editingSaveType === 'DRAFT'" /></FormItem></Col>
+          <Col :span="12"><FormItem label="所属系统"><Select v-model:value="editForm.systemId" :options="[{ label: '暂无系统', value: '' }, ...systems.map((system) => ({ label: `${system.name}${system.status === 'ACTIVE' ? '' : '（已停用）'}`, value: String(system.id), disabled: system.status !== 'ACTIVE' && String(system.id) !== editForm.systemId }))]" @change="changeEditSystem" /></FormItem></Col>
+          <Col :span="12"><FormItem label="目标版本"><Select v-model:value="editForm.targetVersionId" :disabled="!editForm.systemId" :options="[{ label: '请选择版本（可选）', value: '' }, ...editVersions.map((version) => ({ label: `${version.name}${version.status === 'ACTIVE' ? '' : '（已停用）'}`, value: String(version.id), disabled: version.status !== 'ACTIVE' && String(version.id) !== editForm.targetVersionId }))]" /></FormItem></Col>
+          <Col :span="24" data-test="edit-period-field"><FormItem label="需求时间周期（选填）"><Space><DatePicker v-model:value="editForm.periodStartDate" value-format="YYYY-MM-DD" placeholder="开始日期" /><span>至</span><DatePicker v-model:value="editForm.periodEndDate" value-format="YYYY-MM-DD" placeholder="结束日期" /></Space></FormItem></Col>
+          <Col :span="24"><FormItem label="需求内容" required><Input.TextArea v-model:value="editForm.content" :rows="8" :required="editingSaveType !== 'DRAFT'" /></FormItem></Col>
+          <Col :span="24"><FormItem label="附件（选填）"><div class="edit-attachments"><div class="attachment-upload"><div class="attachment-dropzone ant-upload ant-upload-drag" :class="{ 'is-dragging': editIsDragging }" data-test="edit-attachment-dropzone" role="button" tabindex="0" @click="openEditAttachmentPicker" @keydown.enter.prevent="openEditAttachmentPicker" @dragenter.prevent="editIsDragging = true" @dragover.prevent="editIsDragging = true" @dragleave.prevent="editIsDragging = false" @drop.prevent="dropEditFiles"><p class="ant-upload-drag-icon"><InboxOutlined /></p><p class="ant-upload-text">拖拽附件到此处，或点击选择文件</p><input ref="editAttachmentInput" data-test="edit-attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectEditFiles"></div><Button type="primary" data-test="edit-attachment-upload" :loading="editUploading" :disabled="editSelectedFiles.length === 0" @click="uploadEditAttachments">上传附件</Button></div><ul v-if="editSelectedFiles.length" class="attachment-list pending-attachments"><li v-for="file in editSelectedFiles" :key="`${file.name}-${file.lastModified}`">待上传：{{ file.name }}</li></ul><ul v-if="editAttachments.length" class="attachment-list"><li v-for="attachment in editAttachments" :key="attachment.id"><div class="attachment-row"><span><strong>{{ attachment.originalName }}</strong>（{{ attachment.sizeBytes }} 字节）</span><span v-if="previewStateLabel(attachment)" class="attachment-preview-state">{{ previewStateLabel(attachment) }}</span><Space><Button v-if="canPreview(attachment)" type="link" :data-test="`edit-attachment-open-preview-${attachment.id}`" @click="openAttachmentPreview(attachment)">预览</Button><Button v-else-if="attachment.previewStatus === 'FAILED'" type="link" @click="retryAttachmentPreview(attachment)">重新生成</Button><a :href="`/api/attachments/${attachment.id}`" :download="attachment.originalName">下载原文件</a><Button danger type="link" :data-test="`edit-attachment-delete-${attachment.id}`" @click="deleteEditAttachment(attachment)">删除</Button></Space></div><img v-if="attachment.contentType.startsWith('image/')" :src="`/api/attachments/${attachment.id}`" :alt="`${attachment.originalName} 预览`"></li></ul><p v-else class="edit-no-attachment">暂无附件</p></div></FormItem></Col>
+        </Row>
+        <div class="modal-footer"><Space><Button @click="editingId = null">取消</Button><Button v-if="editingSaveType === 'DRAFT'" :data-test="`save-draft-${editingId}`" @click="saveEdit()">保存草稿</Button><Button type="primary" :html-type="editingSaveType === 'DRAFT' ? 'button' : 'submit'" :data-test="editingSaveType === 'DRAFT' ? `submit-draft-${editingId}` : undefined" @click="editingSaveType === 'DRAFT' && saveEdit(true)">{{ editingSaveType === 'DRAFT' ? '正式提交' : '保存修改' }}</Button></Space></div>
       </form>
-    </div>
-    <div v-if="selectedRequirement" class="modal-overlay" data-test="detail-modal" @keydown.esc="selectedRequirement = null; detailAttachments = []">
-      <div class="modal-dialog modal-dialog-lg">
-        <div class="modal-scroll">
-        <div class="modal-header">
-          <h3>需求详情</h3>
-          <button class="modal-close" type="button" @click="selectedRequirement = null; detailAttachments = []">&times;</button>
-        </div>
-        <div class="modal-body detail-modal-body">
-          <h4 class="detail-title">{{ selectedRequirement.title || '未命名草稿' }}</h4>
-          <dl><div><dt>类型</dt><dd>{{ selectedRequirement.type ? typeLabel[selectedRequirement.type] : '—' }}</dd></div><div><dt>状态</dt><dd>{{ selectedRequirement.status ? statusLabel[selectedRequirement.status] : '草稿' }}</dd></div><div><dt>所属系统</dt><dd>{{ systemName(selectedRequirement.systemId) }}</dd></div><div><dt>目标版本</dt><dd>{{ versionName(selectedRequirement.targetVersionId, selectedRequirement.targetVersionName) }}</dd></div><div><dt>填写人 / 部门</dt><dd>{{ selectedRequirement.requesterName || '—' }} / {{ selectedRequirement.department || '—' }}</dd></div><div><dt>填写时间</dt><dd>{{ formatShanghai(selectedRequirement.submittedAt || selectedRequirement.updatedAt) }}</dd></div><div><dt>需求周期</dt><dd>{{ selectedRequirement.periodStartDate && selectedRequirement.periodEndDate ? `${selectedRequirement.periodStartDate} 至 ${selectedRequirement.periodEndDate}` : '—' }}</dd></div><div><dt>最后修改</dt><dd>{{ formatShanghai(selectedRequirement.updatedAt) }}</dd></div><div v-if="selectedRequirement.completedAt"><dt>完成时间</dt><dd>{{ formatShanghai(selectedRequirement.completedAt) }}</dd></div><div v-if="selectedRequirement.handledBy"><dt>处理人</dt><dd>{{ selectedRequirement.handledBy }}</dd></div></dl>
-          <h3>需求内容</h3><p class="detail-content">{{ selectedRequirement.content || '—' }}</p>
-          <div v-if="selectedRequirement.completionDescription"><h3>完成情况</h3><p class="detail-content">{{ selectedRequirement.completionDescription }}</p></div>
-          <h3>附件</h3><ul v-if="detailAttachments.length" class="attachment-list"><li v-for="attachment in detailAttachments" :key="attachment.id"><div class="attachment-row"><span><strong>{{ attachment.originalName }}</strong>（{{ attachment.sizeBytes }} 字节）</span><span v-if="previewStateLabel(attachment)" class="attachment-preview-state">{{ previewStateLabel(attachment) }}</span><span class="row-actions"><button v-if="canPreview(attachment)" type="button" :data-test="`attachment-open-preview-${attachment.id}`" @click="openAttachmentPreview(attachment)">预览</button><button v-else-if="attachment.previewStatus === 'FAILED'" type="button" :data-test="`attachment-retry-preview-${attachment.id}`" @click="retryAttachmentPreview(attachment)">重新生成</button><a :data-test="`attachment-download-${attachment.id}`" :href="`/api/attachments/${attachment.id}`" :download="attachment.originalName">下载原文件</a></span></div><img v-if="attachment.contentType.startsWith('image/')" :data-test="`attachment-preview-${attachment.id}`" :src="`/api/attachments/${attachment.id}`" :alt="`${attachment.originalName} 预览`"></li></ul><p v-else>无</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-cancel" type="button" @click="selectedRequirement = null; detailAttachments = []">关闭</button>
-        </div>
-        </div>
+    </Modal>
+    <Modal v-model:open="detailOpen" title="需求详情" :mask-closable="false" destroy-on-close :get-container="false" width="900px">
+      <div v-if="selectedRequirement" class="detail-modal-body" data-test="detail-modal">
+        <h4 class="detail-title">{{ selectedRequirement.title || '未命名草稿' }}</h4>
+        <Descriptions bordered size="small" :column="2">
+          <DescriptionsItem label="类型">{{ selectedRequirement.type ? requirementTypeMeta(selectedRequirement.type).label : '—' }}</DescriptionsItem><DescriptionsItem label="状态">{{ selectedRequirement.status ? requirementStatusMeta(selectedRequirement.status).label : '草稿' }}</DescriptionsItem>
+          <DescriptionsItem label="所属系统">{{ systemName(selectedRequirement.systemId) }}</DescriptionsItem><DescriptionsItem label="目标版本">{{ versionName(selectedRequirement.targetVersionId, selectedRequirement.targetVersionName) }}</DescriptionsItem>
+          <DescriptionsItem label="填写人 / 部门">{{ selectedRequirement.requesterName || '—' }} / {{ selectedRequirement.department || '—' }}</DescriptionsItem><DescriptionsItem label="填写时间">{{ formatShanghai(selectedRequirement.submittedAt || selectedRequirement.updatedAt) }}</DescriptionsItem>
+          <DescriptionsItem label="需求周期">{{ selectedRequirement.periodStartDate && selectedRequirement.periodEndDate ? `${selectedRequirement.periodStartDate} 至 ${selectedRequirement.periodEndDate}` : '—' }}</DescriptionsItem><DescriptionsItem label="最后修改">{{ formatShanghai(selectedRequirement.updatedAt) }}</DescriptionsItem>
+          <DescriptionsItem v-if="selectedRequirement.completedAt" label="完成时间">{{ formatShanghai(selectedRequirement.completedAt) }}</DescriptionsItem><DescriptionsItem v-if="selectedRequirement.handledBy" label="处理人">{{ selectedRequirement.handledBy }}</DescriptionsItem>
+        </Descriptions>
+        <h3>需求内容</h3><p class="detail-content">{{ selectedRequirement.content || '—' }}</p>
+        <div v-if="selectedRequirement.completionDescription"><h3>完成情况</h3><p class="detail-content">{{ selectedRequirement.completionDescription }}</p></div>
+        <h3>附件</h3><ul v-if="detailAttachments.length" class="attachment-list"><li v-for="attachment in detailAttachments" :key="attachment.id"><div class="attachment-row"><span><strong>{{ attachment.originalName }}</strong>（{{ attachment.sizeBytes }} 字节）</span><span v-if="previewStateLabel(attachment)" class="attachment-preview-state">{{ previewStateLabel(attachment) }}</span><Space><Button v-if="canPreview(attachment)" type="link" :data-test="`attachment-open-preview-${attachment.id}`" @click="openAttachmentPreview(attachment)">预览</Button><Button v-else-if="attachment.previewStatus === 'FAILED'" type="link" :data-test="`attachment-retry-preview-${attachment.id}`" @click="retryAttachmentPreview(attachment)">重新生成</Button><a :data-test="`attachment-download-${attachment.id}`" :href="`/api/attachments/${attachment.id}`" :download="attachment.originalName">下载原文件</a></Space></div><img v-if="attachment.contentType.startsWith('image/')" :data-test="`attachment-preview-${attachment.id}`" :src="`/api/attachments/${attachment.id}`" :alt="`${attachment.originalName} 预览`"></li></ul><p v-else>无</p>
       </div>
-    </div>
-    <div v-if="previewAttachment" class="attachment-preview-overlay" data-test="attachment-preview-dialog" role="dialog" aria-modal="true">
-      <section class="attachment-preview-dialog">
-        <div class="detail-header"><h2>{{ previewAttachment.originalName }}</h2><button type="button" @click="previewAttachment = null">关闭</button></div>
+      <template #footer><Button @click="detailOpen = false">关闭</Button></template>
+    </Modal>
+    <Modal v-model:open="previewOpen" :title="previewAttachment?.originalName" :footer="null" destroy-on-close :get-container="false" width="1100px" wrap-class-name="attachment-preview-modal">
+      <section v-if="previewAttachment" class="attachment-preview-dialog" data-test="attachment-preview-dialog">
         <p v-if="!previewAttachment.contentType.startsWith('image/')" class="preview-disclaimer">在线预览由系统生成，版式可能与原文件略有差异，请以下载的原文件为准。</p>
         <img v-if="previewAttachment.previewContentType?.startsWith('image/') || previewAttachment.contentType.startsWith('image/')" :src="`/api/attachments/${previewAttachment.id}/preview`" :alt="`${previewAttachment.originalName} 在线预览`">
         <iframe v-else data-test="attachment-preview-frame" :src="`/api/attachments/${previewAttachment.id}/preview`" :title="`${previewAttachment.originalName} 在线预览`"></iframe>
         <div class="form-actions"><a data-test="attachment-preview-download" :href="`/api/attachments/${previewAttachment.id}`" :download="previewAttachment.originalName">下载原文件</a></div>
       </section>
-    </div>
-    <div class="pagination-placeholder">共 {{ total }} 条　<button type="button" :disabled="loading || currentPage === 0" @click="query(currentPage - 1)">上一页</button>　第 {{ currentPage + 1 }} / {{ Math.max(totalPages, 1) }} 页　<button type="button" :disabled="loading || currentPage + 1 >= totalPages" @click="query(currentPage + 1)">下一页</button></div>
+    </Modal>
   </section>
 </template>
-

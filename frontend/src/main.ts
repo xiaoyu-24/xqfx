@@ -1,7 +1,15 @@
 import { createApp } from 'vue'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
+import Antd from 'ant-design-vue'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
+import 'ant-design-vue/dist/reset.css'
 import './style.css'
 import App from './App.vue'
 
-createApp(App).use(ElementPlus).mount('#app')
+dayjs.locale('zh-cn')
+
+const mountTarget = document.getElementById('app')
+if (mountTarget) {
+  createApp(App).use(Antd).mount(mountTarget)
+}
+
