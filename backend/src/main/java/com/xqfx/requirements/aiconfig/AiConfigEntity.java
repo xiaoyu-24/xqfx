@@ -2,6 +2,8 @@ package com.xqfx.requirements.aiconfig;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -14,10 +16,17 @@ import java.time.ZoneId;
 class AiConfigEntity {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false, length = 100)
+    private String name;
 
     @Column(nullable = false)
     private boolean enabled = false;
+
+    @Column(nullable = false)
+    private boolean isActive = false;
 
     @Column(length = 500)
     private String serviceUrl;
@@ -37,13 +46,20 @@ class AiConfigEntity {
     protected AiConfigEntity() {
     }
 
+    AiConfigEntity(String name) {
+        this.name = name;
+    }
+
     Long id() { return id; }
+    String name() { return name; }
     boolean enabled() { return enabled; }
+    boolean isActive() { return isActive; }
     String serviceUrl() { return serviceUrl; }
     String modelName() { return modelName; }
     String apiKeyEncrypted() { return apiKeyEncrypted; }
 
-    void update(boolean enabled, String serviceUrl, String modelName) {
+    void update(String name, boolean enabled, String serviceUrl, String modelName) {
+        this.name = name;
         this.enabled = enabled;
         this.serviceUrl = serviceUrl;
         this.modelName = modelName;
@@ -52,6 +68,9 @@ class AiConfigEntity {
     void updateApiKeyEncrypted(String encrypted) {
         this.apiKeyEncrypted = encrypted;
     }
+
+    void activate() { this.isActive = true; }
+    void deactivate() { this.isActive = false; }
 
     @PrePersist
     void setInitialTimestamps() {

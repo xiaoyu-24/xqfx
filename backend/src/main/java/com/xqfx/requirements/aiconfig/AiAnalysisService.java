@@ -49,9 +49,9 @@ class AiAnalysisService {
     }
 
     AiAnalysisResponse analyze(String text) {
-        var config = configService.getEntity();
+        var config = configService.getActiveEntity();
         if (config == null || !config.enabled()) {
-            throw new AiAnalysisException("AI 功能未启用，请先在 AI 配置页开启");
+            throw new AiAnalysisException("AI 功能未启用，请先在 AI 配置页开启并激活一个配置");
         }
         if (config.serviceUrl() == null || config.serviceUrl().isBlank()) {
             throw new AiAnalysisException("AI 服务地址未配置");
@@ -60,7 +60,7 @@ class AiAnalysisService {
             throw new AiAnalysisException("AI 模型名未配置");
         }
 
-        String apiKey = configService.getDecryptedApiKey();
+        String apiKey = configService.getDecryptedApiKey(config);
         String prompt = buildPrompt(text);
 
         try {
@@ -99,11 +99,11 @@ class AiAnalysisService {
 
                 规则：
                 1. requesterName 为提出需求的人名（2-4个汉字），无法确定则填 null。
-                2. department 必须是以下之一：%s。无法确定则填 null。
+                2. department 必须是以下之一：%s。用户可能写“IT”“it部”“信息技术部”等变体，请匹配最接近的部门名称。无法确定则填 null。
                 3. type 只能是 BUG 或 REQUIREMENT。无法确定则填 null。
                 4. title 为简短概括，content 为完整需求描述。无法提取则填 null。
-                5. system 填写最匹配的系统名称（必须从下方系统列表中精确匹配），无法唯一确定则填 null。
-                6. version 填写最匹配的版本名称（必须从对应系统的版本列表中精确匹配），无法唯一确定则填 null。
+                5. system 填写最匹配的系统名称。用户文本中可能使用简称、别名或大小写不同的名称，请尽量匹配下方系统列表中最接近的系统。无法唯一确定则填 null。
+                6. version 填写最匹配的版本名称（必须从对应系统的版本列表中匹配），无法唯一确定则填 null。
                 7. periodStartDate 和 periodEndDate 格式为 yyyy-MM-dd，无法确定则填 null。
 
                 可选部门：%s
@@ -184,10 +184,20 @@ class AiAnalysisService {
 
     private String getValidDepartment(JsonNode node) {
         var value = getNullableString(node, "department");
-        if (value != null && APPROVED_DEPARTMENTS.contains(value)) {
-            return value;
-        }
-        return null;
+        if (value == null) return null;
+        // 精确匹配
+        if (APPROVED_DEPARTMENTS.contains(value)) return value;
+        // 模糊匹配：去掉"部"字后比较，或包含匹配
+        var normalizedInput = value.replace("部", "").trim().toLowerCase(Locale.ROOT);
+        var matches = APPROVED_DEPARTMENTS.stream()
+                .filter(d -> {
+                    var normalizedDept = d.replace("部", "").trim().toLowerCase(Locale.ROOT);
+                    return normalizedDept.equals(normalizedInput)
+                            || normalizedDept.contains(normalizedInput)
+                            || normalizedInput.contains(normalizedDept);
+                })
+                .toList();
+        return matches.size() == 1 ? matches.get(0) : null;
     }
 
     private String getValidType(JsonNode node) {
@@ -203,12 +213,24 @@ class AiAnalysisService {
         if (systemName == null) return null;
 
         var normalized = systemName.trim().toLowerCase(Locale.ROOT);
-        var matches = systemRepository.findAllByDeletedFalse().stream()
+        var activeSystems = systemRepository.findAllByDeletedFalse().stream()
                 .filter(SystemEntity::isActive)
-                .filter(s -> SystemEntity.normalizedName(s.name()).equals(normalized))
                 .toList();
 
-        return matches.size() == 1 ? matches.get(0).id() : null;
+        // 精确匹配
+        var exactMatches = activeSystems.stream()
+                .filter(s -> SystemEntity.normalizedName(s.name()).equals(normalized))
+                .toList();
+        if (exactMatches.size() == 1) return exactMatches.get(0).id();
+
+        // 模糊匹配：包含关系
+        var fuzzyMatches = activeSystems.stream()
+                .filter(s -> {
+                    var sysName = SystemEntity.normalizedName(s.name());
+                    return sysName.contains(normalized) || normalized.contains(sysName);
+                })
+                .toList();
+        return fuzzyMatches.size() == 1 ? fuzzyMatches.get(0).id() : null;
     }
 
     private Long resolveVersionId(JsonNode node, Long systemId) {
@@ -217,12 +239,24 @@ class AiAnalysisService {
         if (versionName == null) return null;
 
         var normalized = versionName.trim().toLowerCase(Locale.ROOT);
-        var matches = versionRepository.findBySystemIdAndDeletedFalseOrderByNameAsc(systemId).stream()
+        var activeVersions = versionRepository.findBySystemIdAndDeletedFalseOrderByNameAsc(systemId).stream()
                 .filter(SystemVersionEntity::isActive)
-                .filter(v -> SystemVersionEntity.normalizedName(v.name()).equals(normalized))
                 .toList();
 
-        return matches.size() == 1 ? matches.get(0).id() : null;
+        // 精确匹配
+        var exactMatches = activeVersions.stream()
+                .filter(v -> SystemVersionEntity.normalizedName(v.name()).equals(normalized))
+                .toList();
+        if (exactMatches.size() == 1) return exactMatches.get(0).id();
+
+        // 模糊匹配：包含关系
+        var fuzzyMatches = activeVersions.stream()
+                .filter(v -> {
+                    var vName = SystemVersionEntity.normalizedName(v.name());
+                    return vName.contains(normalized) || normalized.contains(vName);
+                })
+                .toList();
+        return fuzzyMatches.size() == 1 ? fuzzyMatches.get(0).id() : null;
     }
 
     private LocalDate getValidDate(JsonNode node, String field) {

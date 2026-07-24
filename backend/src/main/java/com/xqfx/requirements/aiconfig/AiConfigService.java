@@ -15,11 +15,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 
 @Service
 class AiConfigService {
 
-    private static final long CONFIG_ID = 1L;
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
 
@@ -36,39 +36,63 @@ class AiConfigService {
     }
 
     @Transactional(readOnly = true)
-    AiConfigResponse getConfig() {
-        var config = repository.findById(CONFIG_ID).orElse(null);
-        if (config == null) {
-            return new AiConfigResponse(false, null, null, null);
-        }
-        String mask = null;
-        if (config.apiKeyEncrypted() != null && encryptionKey != null) {
-            var decrypted = decrypt(config.apiKeyEncrypted());
-            mask = maskApiKey(decrypted);
-        }
-        return new AiConfigResponse(config.enabled(), config.serviceUrl(), config.modelName(), mask);
+    List<AiConfigResponse> listConfigs() {
+        return repository.findAllByOrderByIdAsc().stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    AiConfigResponse getConfigById(Long id) {
+        var config = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("配置不存在"));
+        return toResponse(config);
     }
 
     @Transactional
-    AiConfigResponse saveConfig(AiConfigSaveRequest request) {
-        var config = repository.findById(CONFIG_ID).orElseThrow(() -> new IllegalStateException("AI 配置记录不存在"));
-        config.update(request.enabled(), blankToNull(request.serviceUrl()), blankToNull(request.modelName()));
+    AiConfigResponse createConfig(AiConfigSaveRequest request) {
+        var config = new AiConfigEntity(request.name() == null || request.name().isBlank() ? "新配置" : request.name().trim());
+        config.update(config.name(), request.enabled(), blankToNull(request.serviceUrl()), blankToNull(request.modelName()));
         if (request.apiKey() != null && !request.apiKey().isBlank()) {
-            if (encryptionKey == null) {
-                throw new IllegalStateException("服务端未配置 AI_ENCRYPTION_KEY，无法保存 API Key");
-            }
+            requireEncryptionKey();
             config.updateApiKeyEncrypted(encrypt(request.apiKey()));
         }
         repository.save(config);
-        String mask = null;
-        if (config.apiKeyEncrypted() != null && encryptionKey != null) {
-            mask = maskApiKey(decrypt(config.apiKeyEncrypted()));
-        }
-        return new AiConfigResponse(config.enabled(), config.serviceUrl(), config.modelName(), mask);
+        return toResponse(config);
     }
 
-    boolean testConnection() {
-        var config = repository.findById(CONFIG_ID).orElseThrow(() -> new IllegalStateException("AI 配置记录不存在"));
+    @Transactional
+    AiConfigResponse updateConfig(Long id, AiConfigSaveRequest request) {
+        var config = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("配置不存在"));
+        config.update(request.name() == null || request.name().isBlank() ? config.name() : request.name().trim(),
+                request.enabled(), blankToNull(request.serviceUrl()), blankToNull(request.modelName()));
+        if (request.apiKey() != null && !request.apiKey().isBlank()) {
+            requireEncryptionKey();
+            config.updateApiKeyEncrypted(encrypt(request.apiKey()));
+        }
+        repository.save(config);
+        return toResponse(config);
+    }
+
+    @Transactional
+    void activateConfig(Long id) {
+        var config = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("配置不存在"));
+        repository.findByIsActiveTrue().ifPresent(active -> {
+            active.deactivate();
+            repository.save(active);
+        });
+        config.activate();
+        repository.save(config);
+    }
+
+    @Transactional
+    void deleteConfig(Long id) {
+        var config = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("配置不存在"));
+        if (config.isActive()) {
+            throw new IllegalArgumentException("不能删除当前激活的配置，请先切换激活其他配置");
+        }
+        repository.delete(config);
+    }
+
+    boolean testConnection(Long id) {
+        var config = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("配置不存在"));
         if (config.serviceUrl() == null || config.serviceUrl().isBlank()) {
             throw new IllegalArgumentException("请先配置服务地址");
         }
@@ -90,16 +114,36 @@ class AiConfigService {
         }
     }
 
-    String getDecryptedApiKey() {
-        var config = repository.findById(CONFIG_ID).orElse(null);
+    AiConfigEntity getActiveEntity() {
+        return repository.findByIsActiveTrue().orElse(null);
+    }
+
+    String getDecryptedApiKey(AiConfigEntity config) {
         if (config == null || config.apiKeyEncrypted() == null || encryptionKey == null) {
             return null;
         }
         return decrypt(config.apiKeyEncrypted());
     }
 
-    AiConfigEntity getEntity() {
-        return repository.findById(CONFIG_ID).orElse(null);
+    private AiConfigResponse toResponse(AiConfigEntity config) {
+        String mask = null;
+        if (config.apiKeyEncrypted() != null && encryptionKey != null) {
+            try {
+                mask = maskApiKey(decrypt(config.apiKeyEncrypted()));
+            } catch (Exception e) {
+                mask = "****";
+            }
+        } else if (config.apiKeyEncrypted() != null) {
+            mask = "****";
+        }
+        return new AiConfigResponse(config.id(), config.name(), config.enabled(), config.isActive(),
+                config.serviceUrl(), config.modelName(), mask);
+    }
+
+    private void requireEncryptionKey() {
+        if (encryptionKey == null) {
+            throw new IllegalStateException("服务端未配置 AI_ENCRYPTION_KEY，无法保存 API Key");
+        }
     }
 
     private String encrypt(String plainText) {
