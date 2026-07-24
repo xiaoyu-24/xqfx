@@ -87,7 +87,7 @@ const saveVersion = async () => {
     }
     versionFormMode.value = null
     await loadVersions(selectedSystemId.value)
-    markChanged(['requirements'])
+    markChanged(['requirements', 'dashboard'])
   } catch {
     message.error('保存版本失败')
   }
@@ -99,7 +99,7 @@ const toggleVersion = async (version: VersionItem) => {
     await api.patch(`/system-versions/${version.id}/status`, { status })
     message.success(status === 'ACTIVE' ? '版本已启用' : '版本已停用')
     if (selectedSystemId.value !== undefined) await loadVersions(selectedSystemId.value)
-    markChanged(['requirements'])
+    markChanged(['requirements', 'dashboard'])
   } catch {
     message.error('更新版本状态失败')
   }
@@ -110,7 +110,7 @@ const deleteVersion = async (version: VersionItem) => {
     await api.delete(`/system-versions/${version.id}`)
     message.success('版本已删除')
     if (selectedSystemId.value !== undefined) await loadVersions(selectedSystemId.value)
-    markChanged(['requirements'])
+    markChanged(['requirements', 'dashboard'])
   } catch {
     message.error('删除版本失败；若已关联需求，请先调整需求版本')
   }

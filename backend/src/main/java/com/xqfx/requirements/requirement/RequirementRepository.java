@@ -18,6 +18,8 @@ public interface RequirementRepository extends JpaRepository<RequirementEntity, 
     long countBySystemIdAndDeletedFalse(Long systemId);
     long countByTargetVersionIdAndDeletedFalse(Long targetVersionId);
     java.util.Optional<RequirementEntity> findByIdAndDeletedFalse(Long id);
+    long countByDeletedFalseAndSaveType(RequirementSaveType saveType);
+    long countByDeletedFalseAndSaveTypeAndStatus(RequirementSaveType saveType, RequirementStatus status);
 
     @Modifying
     @Query("""

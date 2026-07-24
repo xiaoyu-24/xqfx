@@ -45,6 +45,12 @@ class ApiExceptionHandler {
         return new ApiError(exception.getMessage(), null);
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    ApiError handleIllegalState(IllegalStateException exception) {
+        return new ApiError(exception.getMessage(), null);
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     ApiError handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException exception) {

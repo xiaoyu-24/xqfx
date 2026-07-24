@@ -58,5 +58,5 @@ public class SystemVersionEntity {
     void updateStatus(SystemVersionStatus status) { this.status = status; }
     void delete() { this.deleted = true; this.deletedAt = LocalDateTime.now(); this.activeNameKey = null; }
 
-    static String normalizedName(String name) { return name.trim().toLowerCase(java.util.Locale.ROOT); }
+    public static String normalizedName(String name) { return name.trim().toLowerCase(java.util.Locale.ROOT); }
 }

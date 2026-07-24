@@ -117,7 +117,7 @@ const saveProcessing = async () => {
     })
     closeProcessing()
     message.success('处理信息已保存')
-    markChanged(['management', 'requirements'])
+    markChanged(['management', 'requirements', 'dashboard'])
     await query()
   } catch (error: unknown) {
     handleError(error, '保存处理信息失败')

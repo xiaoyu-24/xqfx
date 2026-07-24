@@ -13,9 +13,11 @@ import { usePageRefresh } from '../composables/usePageRefresh'
 const props = withDefaults(defineProps<{
   presetSystemId?: number | null
   presetRequestKey?: number
+  presetFilter?: { saveType?: string; status?: string } | null
 }>(), {
   presetSystemId: null,
   presetRequestKey: 0,
+  presetFilter: null,
 })
 
 type SystemItem = { id: number; name: string; status: string }
@@ -177,10 +179,21 @@ const applyPresetSystemFilter = async (systemId: number | null) => {
   await query()
 }
 
+const applyPresetFilter = async (filter: { saveType?: string; status?: string } | null) => {
+  if (!filter) return
+  if (filter.saveType) filters.saveType = filter.saveType
+  if (filter.status) filters.status = filter.status
+  await query()
+}
+
 watch(
   () => [props.presetSystemId, props.presetRequestKey] as const,
   async ([systemId]) => {
-    await applyPresetSystemFilter(systemId)
+    if (props.presetFilter) {
+      await applyPresetFilter(props.presetFilter)
+    } else {
+      await applyPresetSystemFilter(systemId)
+    }
   },
   { immediate: true }
 )
@@ -255,7 +268,7 @@ const deleteRequirement = async (item: Item) => {
     if (selectedRequirement.value?.id === item.id) selectedRequirement.value = null
     message.success('需求已删除')
     await query(currentPage.value)
-    markChanged(['requirements', 'management'])
+    markChanged(['requirements', 'management', 'dashboard'])
   } catch {
     message.error('删除需求失败')
   }
@@ -327,7 +340,7 @@ const uploadEditAttachments = async () => {
     editSelectedFiles.value = []
     schedulePreviewRefresh()
     message.success('附件上传成功')
-    markChanged(['requirements', 'management'])
+    markChanged(['requirements', 'management', 'dashboard'])
   } catch {
     message.error('附件上传失败，未完成的文件可重新选择后上传')
   } finally {
@@ -341,7 +354,7 @@ const deleteEditAttachment = async (attachment: Attachment) => {
     await api.delete(`/attachments/${attachment.id}`)
     editAttachments.value = editAttachments.value.filter((item) => item.id !== attachment.id)
     message.success('附件已删除')
-    markChanged(['requirements', 'management'])
+    markChanged(['requirements', 'management', 'dashboard'])
   } catch {
     message.error('删除附件失败')
   }
@@ -371,7 +384,7 @@ const saveEdit = async (submitDraft = false) => {
     editingId.value = null
     message.success(isDraftSave ? '草稿已更新' : submitDraft ? '草稿已正式提交' : '需求已更新')
     await query(currentPage.value)
-    markChanged(['requirements', 'management'])
+    markChanged(['requirements', 'management', 'dashboard'])
   } catch (error: unknown) {
     handleError(error, '保存需求失败，请检查必填项和系统版本')
   }

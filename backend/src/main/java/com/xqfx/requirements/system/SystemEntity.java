@@ -77,7 +77,7 @@ public class SystemEntity {
         return recordVersion;
     }
 
-    String name() {
+    public String name() {
         return name;
     }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { Button, Card, DatePicker, Form, Input, Radio, Select, message } from 'ant-design-vue'
+import { Button, Card, Collapse, CollapsePanel, DatePicker, Form, Input, Radio, Select, message } from 'ant-design-vue'
+import { RobotOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
 import { DEPARTMENTS } from '../constants/departments'
 import { markChanged } from '../composables/refreshBus'
@@ -32,6 +33,45 @@ const form = reactive({
   newSystemCollaborators: '',
   content: '',
 })
+
+const aiText = ref('')
+const aiAnalyzing = ref(false)
+
+const analyzeWithAi = async () => {
+  if (!aiText.value.trim()) {
+    message.warning('请输入需要分析的需求描述')
+    return
+  }
+  aiAnalyzing.value = true
+  try {
+    const { data } = await api.post('/ai/analyze', { text: aiText.value })
+    let filled = 0
+    if (data.requesterName && !form.requesterName) { form.requesterName = data.requesterName; filled++ }
+    if (data.department && !form.department) { form.department = data.department; filled++ }
+    if (data.title && !form.title) { form.title = data.title; filled++ }
+    if (data.type && !form.type) { form.type = data.type; filled++ }
+    if (data.content && !form.content) { form.content = data.content; filled++ }
+    if (data.periodStartDate && !form.periodStartDate) { form.periodStartDate = data.periodStartDate; filled++ }
+    if (data.periodEndDate && !form.periodEndDate) { form.periodEndDate = data.periodEndDate; filled++ }
+    if (data.systemId && !form.systemId) {
+      systemSelect.value = String(data.systemId)
+      form.systemId = String(data.systemId)
+      await loadVersions()
+      if (data.targetVersionId && !form.targetVersionId) { form.targetVersionId = String(data.targetVersionId) }
+      filled++
+    }
+    if (filled > 0) {
+      message.success(`AI 已识别并填充 ${filled} 个字段`)
+    } else {
+      message.info('AI 未能从文本中识别出有效字段')
+    }
+  } catch (error: unknown) {
+    const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+    message.error(msg || 'AI 分析失败，请稍后重试')
+  } finally {
+    aiAnalyzing.value = false
+  }
+}
 
 const submitting = ref(false)
 const systems = ref<Array<{ id: number; name: string; status: string }>>([])
@@ -171,8 +211,8 @@ const submit = async (draft: boolean) => {
     lastSavedSnapshot.value = createSnapshot()
     message.success(draft ? '暂存成功' : '保存成功')
     markChanged(shouldRefreshSystemPages
-      ? ['requirements', 'management', 'systems', 'versions']
-      : ['requirements', 'management'])
+      ? ['requirements', 'management', 'systems', 'versions', 'dashboard']
+      : ['requirements', 'management', 'dashboard'])
     if (!draft) emit('submitted')
   } catch {
     message.error('保存失败，请检查填写内容后重试')
@@ -184,6 +224,17 @@ const submit = async (draft: boolean) => {
 <template>
   <section class="requirement-form-shell" aria-labelledby="requirement-form-title">
     <Card class="requirement-form-card" data-test="requirement-form-card" :bordered="false">
+      <Collapse class="ai-import-collapse" :bordered="false">
+        <CollapsePanel key="ai-import">
+          <template #header>
+            <span class="ai-import-header"><RobotOutlined /> AI 智能导入</span>
+          </template>
+          <p class="ai-import-hint">粘贴一段需求描述文本，AI 将自动识别并填充空白字段（已有内容不会被覆盖，不会自动提交）。</p>
+          <Input.TextArea v-model:value="aiText" :rows="4" placeholder="请粘贴需求描述文本…" />
+          <Button class="ai-analyze-btn" type="primary" ghost :loading="aiAnalyzing" @click="analyzeWithAi">分析并填充</Button>
+        </CollapsePanel>
+      </Collapse>
+
       <p class="field-requirement-legend" data-test="field-requirement-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
 
       <Form :model="form" layout="vertical" class="requirement-form" @submit.prevent="submit(false)">
@@ -284,6 +335,30 @@ const submit = async (draft: boolean) => {
 
 .requirement-form-card {
   box-shadow: 0 8px 24px rgb(15 23 42 / 8%);
+}
+
+.ai-import-collapse {
+  margin-bottom: 16px;
+  background: rgb(248 250 252);
+  border-radius: 8px;
+}
+
+.ai-import-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: rgb(22 119 255);
+}
+
+.ai-import-hint {
+  margin: 0 0 8px;
+  color: rgb(100 116 139);
+  font-size: 13px;
+}
+
+.ai-analyze-btn {
+  margin-top: 10px;
 }
 
 .form-title,

@@ -119,7 +119,7 @@ const saveSystem = async () => {
     }
     systemFormMode.value = null
     await loadSystems()
-    markChanged(['requirements', 'versions'])
+    markChanged(['requirements', 'versions', 'dashboard'])
   } catch (error: unknown) {
     handleError(error, '保存系统失败，请检查名称是否重复')
   }
@@ -131,7 +131,7 @@ const toggleSystem = async (system: SystemItem) => {
     await api.patch(`/systems/${system.id}/status`, { status, recordVersion: system.recordVersion })
     message.success(status === 'ACTIVE' ? '系统已启用' : '系统已停用')
     await loadSystems()
-    markChanged(['requirements', 'versions'])
+    markChanged(['requirements', 'versions', 'dashboard'])
   } catch {
     message.error('更新系统状态失败')
   }
@@ -142,7 +142,7 @@ const deleteSystem = async (system: SystemItem) => {
     await api.delete(`/systems/${system.id}`)
     message.success('系统已删除')
     await loadSystems()
-    markChanged(['requirements', 'versions'])
+    markChanged(['requirements', 'versions', 'dashboard'])
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status
     if (status === 409) {
@@ -163,7 +163,7 @@ const migrateRequirements = async () => {
     message.success(`已迁移 ${data.migratedCount} 条需求`)
     migrationSourceId.value = null
     await loadSystems()
-    markChanged(['requirements', 'versions'])
+    markChanged(['requirements', 'versions', 'dashboard'])
   } catch {
     message.error('迁移需求失败，请检查目标系统状态')
   }
