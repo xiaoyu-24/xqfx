@@ -5,7 +5,7 @@
  * 统一 Tag 颜色规范，便于后续调整。
  *
  * 使用方式：
- *   import { REQUIREMENT_STATUS, REQUIREMENT_TYPE } from '@/constants/statusConfig'
+ *   import { REQUIREMENT_STATUS } from '@/constants/statusConfig'
  *   <Tag :color="REQUIREMENT_STATUS[record.status].color">{{ REQUIREMENT_STATUS[record.status].label }}</Tag>
  */
 
@@ -20,12 +20,6 @@ export const REQUIREMENT_STATUS = {
   COMPLETED: { label: '已完成', color: 'success' },
   REJECTED: { label: '已拒绝', color: 'error' },
   CLOSED: { label: '已关闭', color: 'default' },
-} as const satisfies Record<string, StatusMeta>
-
-/** 需求类型（与后端 RequirementType 枚举一致） */
-export const REQUIREMENT_TYPE = {
-  BUG: { label: 'BUG', color: 'volcano' },
-  REQUIREMENT: { label: '需求', color: 'blue' },
 } as const satisfies Record<string, StatusMeta>
 
 /** 保存类型（与后端 RequirementSaveType 枚举一致） */
@@ -51,7 +45,6 @@ export const ENTITY_STATUS = {
 } as const satisfies Record<string, StatusMeta>
 
 export type RequirementStatusKey = keyof typeof REQUIREMENT_STATUS
-export type RequirementTypeKey = keyof typeof REQUIREMENT_TYPE
 export type SaveTypeKey = keyof typeof SAVE_TYPE
 export type AttachmentPreviewStatusKey = keyof typeof ATTACHMENT_PREVIEW_STATUS
 export type EntityStatusKey = keyof typeof ENTITY_STATUS
@@ -61,7 +54,6 @@ const toOptions = <T extends Record<string, StatusMeta>>(meta: T) =>
   Object.entries(meta).map(([value, { label }]) => ({ value, label }))
 
 export const requirementStatusOptions = toOptions(REQUIREMENT_STATUS)
-export const requirementTypeOptions = toOptions(REQUIREMENT_TYPE)
 export const saveTypeOptions = toOptions(SAVE_TYPE)
 export const entityStatusOptions = toOptions(ENTITY_STATUS)
 
@@ -70,9 +62,6 @@ const fallbackMeta = (key: string): StatusMeta => ({ label: key, color: 'default
 
 export const requirementStatusMeta = (status: string): StatusMeta =>
   REQUIREMENT_STATUS[status as RequirementStatusKey] ?? fallbackMeta(status)
-
-export const requirementTypeMeta = (type: string): StatusMeta =>
-  REQUIREMENT_TYPE[type as RequirementTypeKey] ?? fallbackMeta(type)
 
 export const saveTypeMeta = (saveType: string): StatusMeta =>
   SAVE_TYPE[saveType as SaveTypeKey] ?? fallbackMeta(saveType)

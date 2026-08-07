@@ -19,11 +19,13 @@ class AuthInterceptor implements HandlerInterceptor {
     private static final String[] ADMIN_ONLY_PREFIXES = {
             "/api/users",
             "/api/ai-config",
+            "/api/dictionaries",
     };
 
     /** 供全体登录用户使用、不受管理员限制的例外路径。 */
     private static final String[] ADMIN_PREFIX_EXCEPTIONS = {
             "/api/users/active",
+            "/api/dictionaries/active",
     };
 
     private final AuthService authService;

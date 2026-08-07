@@ -12,7 +12,7 @@ import com.xqfx.requirements.system.SystemEntity;
 public interface RequirementRepository extends JpaRepository<RequirementEntity, Long>, JpaSpecificationExecutor<RequirementEntity> {
     List<RequirementEntity> findAllByDeletedFalse();
     Page<RequirementEntity> findAllByDeletedFalse(Pageable pageable);
-    List<RequirementEntity> findByTypeAndDeletedFalse(RequirementType type);
+    List<RequirementEntity> findByType_IdAndDeletedFalse(Long typeId);
     List<RequirementEntity> findBySystemIdAndDeletedFalse(Long systemId);
     List<RequirementEntity> findBySaveTypeAndDeletedFalse(RequirementSaveType saveType);
     long countBySystemIdAndDeletedFalse(Long systemId);

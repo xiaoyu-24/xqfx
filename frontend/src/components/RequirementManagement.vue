@@ -2,8 +2,9 @@
 import { computed, reactive, ref } from 'vue'
 import type { TableColumnsType } from 'ant-design-vue'
 import { Button, Card, DatePicker, Form, FormItem, Input, Modal, Select, SelectOption, Table, Tag, Textarea, message } from 'ant-design-vue'
+import { RouterLink } from 'vue-router'
 import { api } from '../api'
-import { requirementStatusMeta, requirementStatusOptions, requirementTypeMeta } from '../constants/statusConfig'
+import { requirementStatusMeta, requirementStatusOptions } from '../constants/statusConfig'
 import { markChanged } from '../composables/refreshBus'
 import { useApiError } from '../composables/useApiError'
 import { usePageRefresh } from '../composables/usePageRefresh'
@@ -52,7 +53,7 @@ const tableRecord = (record: Record<string, unknown>) => record as Item
 const systemName = (id: number | null) => id === null ? '暂无系统' : systems.value.find((system) => system.id === id)?.name ?? `系统 #${id}`
 const versionName = (item: Item) => item.targetVersionId === null ? '—' : item.targetVersionName ?? `版本 #${item.targetVersionId}`
 const displayStatus = (item: Item) => item.status ? requirementStatusMeta(item.status).label : '暂存草稿'
-const displayType = (item: Item) => item.type ? requirementTypeMeta(item.type).label : '—'
+const displayType = (item: Item) => item.type ?? '—'
 const { handleError } = useApiError()
 const tableLocale = computed(() => ({ emptyText: loading.value ? '加载中…' : '暂无待处理需求' }))
 const formatShanghai = (value: string | null | undefined) => {
@@ -159,10 +160,10 @@ usePageRefresh('management', async () => {
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'type'">
-            <Tag :color="record.type ? requirementTypeMeta(record.type).color : 'default'">{{ displayType(tableRecord(record)) }}</Tag>
+            <Tag>{{ displayType(tableRecord(record)) }}</Tag>
           </template>
           <template v-else-if="column.key === 'title'">
-            <span class="management-title">{{ record.title || '未命名草稿' }}</span>
+            <RouterLink class="management-title requirement-title-link" :to="{ name: 'requirement-detail', params: { id: tableRecord(record).id } }">{{ record.title || '未命名草稿' }}</RouterLink>
           </template>
           <template v-else-if="column.key === 'systemVersion'">
             <div class="management-two-line-cell">
@@ -253,8 +254,13 @@ usePageRefresh('management', async () => {
 }
 
 .management-title {
-  color: rgba(0, 0, 0, 0.88);
+  color: #1677ff;
   font-weight: 500;
+}
+
+.management-title:hover {
+  color: #4096ff;
+  text-decoration: underline;
 }
 
 .management-two-line-cell {
@@ -305,4 +311,3 @@ usePageRefresh('management', async () => {
   }
 }
 </style>
-

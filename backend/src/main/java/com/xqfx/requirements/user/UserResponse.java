@@ -4,6 +4,7 @@ public record UserResponse(
         Long id,
         String username,
         String displayName,
+        Long departmentId,
         String department,
         boolean admin,
         boolean disabled,
@@ -14,7 +15,8 @@ public record UserResponse(
                 user.id(),
                 user.username(),
                 user.displayName(),
-                user.department(),
+                user.department() == null ? null : user.department().id(),
+                user.department() == null ? null : user.department().name(),
                 user.isAdmin(),
                 user.isDisabled(),
                 user.mustChangePassword());

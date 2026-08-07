@@ -1,42 +1,272 @@
 package com.xqfx.requirements.requirement;
-import com.xqfx.requirements.system.*;
+
+import com.xqfx.requirements.dictionary.DictionaryCategory;
+import com.xqfx.requirements.dictionary.DictionaryItemEntity;
+import com.xqfx.requirements.dictionary.DictionaryService;
+import com.xqfx.requirements.system.SystemEntity;
+import com.xqfx.requirements.system.SystemProfile;
+import com.xqfx.requirements.system.SystemRepository;
+import com.xqfx.requirements.system.SystemVersionEntity;
+import com.xqfx.requirements.system.SystemVersionRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
+import java.util.List;
 
 @Service
 class RequirementService {
- private final RequirementRepository requirements; private final SystemRepository systems; private final SystemVersionRepository versions;
- RequirementService(RequirementRepository requirements,SystemRepository systems,SystemVersionRepository versions){this.requirements=requirements;this.systems=systems;this.versions=versions;}
- @Transactional RequirementResponse create(String requesterName,String department,String title,RequirementType type,String content,Long systemId,Long targetVersionId,LocalDate start,LocalDate end,String newSystemName,String newSystemOwnerName,java.util.List<String> newSystemCollaborators){
-   DepartmentPolicy.validate(department);
-   if(systemId!=null&&newSystemName!=null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"不能同时选择已有系统和新系统");
-   var system=newSystemName==null?(systemId==null?null:findSystem(systemId)):createNewSystem(newSystemName,newSystemOwnerName,newSystemCollaborators);
-   if(system!=null&&!system.isActive()) throw new ResponseStatusException(HttpStatus.CONFLICT,"系统已停用，不能新建需求");
-   var version=targetVersionId==null?null:findVersion(targetVersionId);
-   if(version!=null&&!version.isActive()) throw new ResponseStatusException(HttpStatus.CONFLICT,"版本已停用，不能作为目标版本");
-   if(version!=null&&(system==null||!version.system().id().equals(system.id()))) throw new IllegalArgumentException("目标版本不属于所属系统");
-   var saved=requirements.save(new RequirementEntity(requesterName,department,title,type,content,system,version,RequirementPeriod.of(start,end)));
-   return RequirementResponse.from(saved);
- }
- @Transactional RequirementResponse createDraft(String requesterName,String department,String title,RequirementType type,String content,Long systemId,Long targetVersionId,LocalDate start,LocalDate end){DepartmentPolicy.validate(department);var system=systemId==null?null:findSystem(systemId);var version=targetVersionId==null?null:findVersion(targetVersionId);if(version!=null&&(system==null||!version.system().id().equals(system.id())))throw new IllegalArgumentException("目标版本不属于所属系统");return RequirementResponse.from(requirements.save(RequirementEntity.draft(requesterName,department,title,type,content,system,version,RequirementPeriod.of(start,end))));}
- @Transactional(readOnly=true) java.util.List<RequirementResponse> list(RequirementType type,Long systemId,RequirementSaveType saveType){var items=saveType!=null?requirements.findBySaveTypeAndDeletedFalse(saveType):(systemId!=null?requirements.findBySystemIdAndDeletedFalse(systemId):(type!=null?requirements.findByTypeAndDeletedFalse(type):requirements.findAllByDeletedFalse()));return items.stream().map(RequirementResponse::from).toList();}
- @Transactional(readOnly=true) RequirementPageResponse page(int page,int size,Long systemId,boolean unassignedSystem,Long targetVersionId,String department,String requesterName,RequirementType type,RequirementStatus status,RequirementSaveType saveType,String keyword,LocalDate submittedFrom,LocalDate submittedTo,LocalDate periodOverlapStart,LocalDate periodOverlapEnd){if(page<0||size<1||size>100)throw new IllegalArgumentException("分页参数无效");if(systemId!=null&&unassignedSystem)throw new IllegalArgumentException("不能同时筛选具体系统和暂无系统");if(submittedFrom!=null&&submittedTo!=null&&submittedTo.isBefore(submittedFrom))throw new IllegalArgumentException("填写结束日期不能早于开始日期");if((periodOverlapStart==null)!=(periodOverlapEnd==null))throw new IllegalArgumentException("周期筛选开始和结束日期必须同时填写");if(periodOverlapStart!=null&&periodOverlapEnd.isBefore(periodOverlapStart))throw new IllegalArgumentException("周期筛选结束日期不能早于开始日期");return RequirementPageResponse.from(requirements.findAll(RequirementSpecifications.filtered(systemId,unassignedSystem,targetVersionId,department,requesterName,type,status,saveType,keyword,submittedFrom,submittedTo,periodOverlapStart,periodOverlapEnd),PageRequest.of(page,size,Sort.by(Sort.Direction.DESC,"createdAt"))));}
- @Transactional(readOnly=true) RequirementPageResponse managementPage(int page,int size){if(page<0||size<1||size>100)throw new IllegalArgumentException("分页参数无效");return RequirementPageResponse.from(requirements.findAll(RequirementSpecifications.management(),PageRequest.of(page,size,Sort.by(Sort.Direction.DESC,"updatedAt"))));}
- @Transactional(readOnly=true) RequirementResponse get(Long id){return RequirementResponse.from(findActive(id));}
- @Transactional RequirementResponse updateDraft(Long id,String requesterName,String department,String title,RequirementType type,String content,Long systemId,Long targetVersionId,LocalDate start,LocalDate end,Long recordVersion){DepartmentPolicy.validate(department);var requirement=findActive(id);assertRecordVersion(requirement.recordVersion(),recordVersion,"需求已被其他人修改，请刷新后重试");if(!requirement.isDraft())throw new IllegalArgumentException("只有草稿可以暂存更新");var system=systemId==null?null:findSystem(systemId);var version=targetVersionId==null?null:findVersion(targetVersionId);if(version!=null&&(system==null||!version.system().id().equals(system.id())))throw new IllegalArgumentException("目标版本不属于所属系统");requirement.updateDraft(requesterName,department,title,type,content,system,version,RequirementPeriod.of(start,end));requirements.flush();return RequirementResponse.from(requirement);}
- @Transactional RequirementResponse update(Long id,String requesterName,String department,String title,RequirementType type,String content,Long systemId,Long targetVersionId,LocalDate start,LocalDate end,RequirementStatus status,Long recordVersion){DepartmentPolicy.validate(department);var requirement=findActive(id);assertRecordVersion(requirement.recordVersion(),recordVersion,"需求已被其他人修改，请刷新后重试");var system=systemId==null?null:findSystem(systemId);var version=targetVersionId==null?null:findVersion(targetVersionId);if(system!=null&&!system.isActive()&&(requirement.system()==null||!system.id().equals(requirement.system().id())))throw new ResponseStatusException(HttpStatus.CONFLICT,"系统已停用，不能主动更换");if(version!=null&&!version.isActive()&&(requirement.targetVersion()==null||!version.id().equals(requirement.targetVersion().id())))throw new ResponseStatusException(HttpStatus.CONFLICT,"版本已停用，不能主动更换");if(version!=null&&(system==null||!version.system().id().equals(system.id())))throw new IllegalArgumentException("目标版本不属于所属系统");requirement.update(requesterName,department,title,type,content,system,version,RequirementPeriod.of(start,end),status);requirements.flush();return RequirementResponse.from(requirement);}
- @Transactional RequirementResponse updateStatus(Long id,RequirementStatus status,Long recordVersion){var requirement=findActive(id);assertRecordVersion(requirement.recordVersion(),recordVersion,"需求已被其他人修改，请刷新后重试");requirement.updateStatus(status);requirements.flush();return RequirementResponse.from(requirement);}
- @Transactional RequirementResponse updateProcessing(Long id,RequirementStatus status,LocalDateTime completedAt,String handledBy,String completionDescription,Long recordVersion){var requirement=findActive(id);assertRecordVersion(requirement.recordVersion(),recordVersion,"需求已被其他人修改，请刷新后重试");if(status==RequirementStatus.COMPLETED||status==RequirementStatus.CLOSED||status==RequirementStatus.REJECTED){if(completedAt==null)throw new IllegalArgumentException("终态需求必须填写完成时间");}requirement.updateProcessing(status,completedAt,handledBy,completionDescription);requirements.flush();return RequirementResponse.from(requirement);}
- @Transactional void delete(Long id){findActive(id).delete();}
- private RequirementEntity findActive(Long id){return requirements.findByIdAndDeletedFalse(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在"));}
- private SystemEntity findSystem(Long id){return systems.findByIdAndDeletedFalse(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"系统不存在"));}
- private SystemVersionEntity findVersion(Long id){return versions.findByIdAndDeletedFalse(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"版本不存在"));}
- private SystemEntity createNewSystem(String name,String ownerName,java.util.List<String> collaborators){var profile=SystemProfile.create(name,ownerName,collaborators==null?java.util.List.of():collaborators);if(systems.existsByActiveNameKey(SystemEntity.normalizedName(profile.name())))throw new ResponseStatusException(HttpStatus.CONFLICT,"系统名称已存在");return systems.save(new SystemEntity(profile));}
- private void assertRecordVersion(long currentVersion,Long requestVersion,String message){if(requestVersion==null||requestVersion!=currentVersion)throw new ResponseStatusException(HttpStatus.CONFLICT,message);}
+
+    private final RequirementRepository requirements;
+    private final SystemRepository systems;
+    private final SystemVersionRepository versions;
+    private final DictionaryService dictionaries;
+
+    RequirementService(RequirementRepository requirements, SystemRepository systems,
+                       SystemVersionRepository versions, DictionaryService dictionaries) {
+        this.requirements = requirements;
+        this.systems = systems;
+        this.versions = versions;
+        this.dictionaries = dictionaries;
+    }
+
+    @Transactional
+    RequirementResponse create(String requesterName, Long departmentId, String title, Long typeId, String content,
+                               Long systemId, Long targetVersionId, LocalDate start, LocalDate end,
+                               String newSystemName, String newSystemOwnerName,
+                               List<String> newSystemCollaborators) {
+        var department = dictionaries.requireActive(departmentId, DictionaryCategory.DEPARTMENT, "部门");
+        var type = dictionaries.requireActive(typeId, DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
+        if (systemId != null && newSystemName != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能同时选择已有系统和新系统");
+        }
+
+        var system = newSystemName == null
+                ? (systemId == null ? null : findSystem(systemId))
+                : createNewSystem(newSystemName, newSystemOwnerName, newSystemCollaborators);
+        if (system != null && !system.isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "系统已停用，不能新建需求");
+        }
+
+        var version = targetVersionId == null ? null : findVersion(targetVersionId);
+        if (version != null && !version.isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "版本已停用，不能作为目标版本");
+        }
+        assertVersionBelongsToSystem(version, system);
+
+        var saved = requirements.save(new RequirementEntity(requesterName, department, title, type, content,
+                system, version, RequirementPeriod.of(start, end)));
+        return RequirementResponse.from(saved);
+    }
+
+    @Transactional
+    RequirementResponse createDraft(String requesterName, Long departmentId, String title, Long typeId,
+                                    String content, Long systemId, Long targetVersionId,
+                                    LocalDate start, LocalDate end) {
+        var department = resolveOptionalActive(departmentId, DictionaryCategory.DEPARTMENT, "部门");
+        var type = resolveOptionalActive(typeId, DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
+        var system = systemId == null ? null : findSystem(systemId);
+        var version = targetVersionId == null ? null : findVersion(targetVersionId);
+        assertVersionBelongsToSystem(version, system);
+        return RequirementResponse.from(requirements.save(RequirementEntity.draft(requesterName, department, title,
+                type, content, system, version, RequirementPeriod.of(start, end))));
+    }
+
+    @Transactional(readOnly = true)
+    List<RequirementResponse> list(Long typeId, Long systemId, RequirementSaveType saveType) {
+        var items = saveType != null
+                ? requirements.findBySaveTypeAndDeletedFalse(saveType)
+                : (systemId != null
+                        ? requirements.findBySystemIdAndDeletedFalse(systemId)
+                        : (typeId != null
+                                ? requirements.findByType_IdAndDeletedFalse(typeId)
+                                : requirements.findAllByDeletedFalse()));
+        return items.stream().map(RequirementResponse::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    RequirementPageResponse page(int page, int size, Long systemId, boolean unassignedSystem,
+                                 Long targetVersionId, Long departmentId, String requesterName, Long typeId,
+                                 RequirementStatus status, RequirementSaveType saveType, String keyword,
+                                 LocalDate submittedFrom, LocalDate submittedTo,
+                                 LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
+        validatePageFilter(page, size, systemId, unassignedSystem, submittedFrom, submittedTo,
+                periodOverlapStart, periodOverlapEnd);
+        return RequirementPageResponse.from(requirements.findAll(
+                RequirementSpecifications.filtered(systemId, unassignedSystem, targetVersionId, departmentId,
+                        requesterName, typeId, status, saveType, keyword, submittedFrom, submittedTo,
+                        periodOverlapStart, periodOverlapEnd),
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))));
+    }
+
+    @Transactional(readOnly = true)
+    RequirementPageResponse managementPage(int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new IllegalArgumentException("分页参数无效");
+        }
+        return RequirementPageResponse.from(requirements.findAll(RequirementSpecifications.management(),
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"))));
+    }
+
+    @Transactional(readOnly = true)
+    RequirementResponse get(Long id) {
+        return RequirementResponse.from(findActive(id));
+    }
+
+    @Transactional
+    RequirementResponse updateDraft(Long id, String requesterName, Long departmentId, String title, Long typeId,
+                                    String content, Long systemId, Long targetVersionId,
+                                    LocalDate start, LocalDate end, Long recordVersion) {
+        var requirement = findActive(id);
+        assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
+        if (!requirement.isDraft()) {
+            throw new IllegalArgumentException("只有草稿可以暂存更新");
+        }
+        var department = resolveForUpdate(departmentId, requirement.department(),
+                DictionaryCategory.DEPARTMENT, "部门");
+        var type = resolveForUpdate(typeId, requirement.type(),
+                DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
+        var system = systemId == null ? null : findSystem(systemId);
+        var version = targetVersionId == null ? null : findVersion(targetVersionId);
+        assertVersionBelongsToSystem(version, system);
+        requirement.updateDraft(requesterName, department, title, type, content, system, version,
+                RequirementPeriod.of(start, end));
+        requirements.flush();
+        return RequirementResponse.from(requirement);
+    }
+
+    @Transactional
+    RequirementResponse update(Long id, String requesterName, Long departmentId, String title, Long typeId,
+                               String content, Long systemId, Long targetVersionId,
+                               LocalDate start, LocalDate end, RequirementStatus status, Long recordVersion) {
+        var requirement = findActive(id);
+        assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
+        var department = resolveForUpdate(departmentId, requirement.department(),
+                DictionaryCategory.DEPARTMENT, "部门");
+        var type = resolveForUpdate(typeId, requirement.type(),
+                DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
+        var system = systemId == null ? null : findSystem(systemId);
+        var version = targetVersionId == null ? null : findVersion(targetVersionId);
+        if (system != null && !system.isActive()
+                && (requirement.system() == null || !system.id().equals(requirement.system().id()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "系统已停用，不能主动更换");
+        }
+        if (version != null && !version.isActive()
+                && (requirement.targetVersion() == null || !version.id().equals(requirement.targetVersion().id()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "版本已停用，不能主动更换");
+        }
+        assertVersionBelongsToSystem(version, system);
+        requirement.update(requesterName, department, title, type, content, system, version,
+                RequirementPeriod.of(start, end), status);
+        requirements.flush();
+        return RequirementResponse.from(requirement);
+    }
+
+    @Transactional
+    RequirementResponse updateStatus(Long id, RequirementStatus status, Long recordVersion) {
+        var requirement = findActive(id);
+        assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
+        requirement.updateStatus(status);
+        requirements.flush();
+        return RequirementResponse.from(requirement);
+    }
+
+    @Transactional
+    RequirementResponse updateProcessing(Long id, RequirementStatus status, LocalDateTime completedAt,
+                                         String handledBy, String completionDescription, Long recordVersion) {
+        var requirement = findActive(id);
+        assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
+        if (status == RequirementStatus.COMPLETED || status == RequirementStatus.CLOSED
+                || status == RequirementStatus.REJECTED) {
+            if (completedAt == null) {
+                throw new IllegalArgumentException("终态需求必须填写完成时间");
+            }
+        }
+        requirement.updateProcessing(status, completedAt, handledBy, completionDescription);
+        requirements.flush();
+        return RequirementResponse.from(requirement);
+    }
+
+    @Transactional
+    void delete(Long id) {
+        findActive(id).delete();
+    }
+
+    private DictionaryItemEntity resolveOptionalActive(Long id, DictionaryCategory category, String label) {
+        return id == null ? null : dictionaries.requireActive(id, category, label);
+    }
+
+    /**
+     * A disabled item may remain on an old record. It cannot be selected for a different value.
+     */
+    private DictionaryItemEntity resolveForUpdate(Long requestedId, DictionaryItemEntity current,
+                                                  DictionaryCategory category, String label) {
+        if (requestedId == null) {
+            return null;
+        }
+        if (current != null && current.id().equals(requestedId)) {
+            return current;
+        }
+        return dictionaries.requireActive(requestedId, category, label);
+    }
+
+    private RequirementEntity findActive(Long id) {
+        return requirements.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "需求不存在"));
+    }
+
+    private SystemEntity findSystem(Long id) {
+        return systems.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "系统不存在"));
+    }
+
+    private SystemVersionEntity findVersion(Long id) {
+        return versions.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "版本不存在"));
+    }
+
+    private SystemEntity createNewSystem(String name, String ownerName, List<String> collaborators) {
+        var profile = SystemProfile.create(name, ownerName, collaborators == null ? List.of() : collaborators);
+        if (systems.existsByActiveNameKey(SystemEntity.normalizedName(profile.name()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "系统名称已存在");
+        }
+        return systems.save(new SystemEntity(profile));
+    }
+
+    private static void assertVersionBelongsToSystem(SystemVersionEntity version, SystemEntity system) {
+        if (version != null && (system == null || !version.system().id().equals(system.id()))) {
+            throw new IllegalArgumentException("目标版本不属于所属系统");
+        }
+    }
+
+    private static void validatePageFilter(int page, int size, Long systemId, boolean unassignedSystem,
+                                           LocalDate submittedFrom, LocalDate submittedTo,
+                                           LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new IllegalArgumentException("分页参数无效");
+        }
+        if (systemId != null && unassignedSystem) {
+            throw new IllegalArgumentException("不能同时筛选具体系统和暂无系统");
+        }
+        if (submittedFrom != null && submittedTo != null && submittedTo.isBefore(submittedFrom)) {
+            throw new IllegalArgumentException("填写结束日期不能早于开始日期");
+        }
+        if ((periodOverlapStart == null) != (periodOverlapEnd == null)) {
+            throw new IllegalArgumentException("周期筛选开始和结束日期必须同时填写");
+        }
+        if (periodOverlapStart != null && periodOverlapEnd.isBefore(periodOverlapStart)) {
+            throw new IllegalArgumentException("周期筛选结束日期不能早于开始日期");
+        }
+    }
+
+    private static void assertRecordVersion(long currentVersion, Long requestVersion, String message) {
+        if (requestVersion == null || requestVersion != currentVersion) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, message);
+        }
+    }
 }

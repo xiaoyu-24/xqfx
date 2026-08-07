@@ -5,6 +5,7 @@ export interface CurrentUser {
   id: number
   username: string
   displayName: string
+  departmentId: number | null
   department: string | null
   admin: boolean
   disabled: boolean
@@ -13,6 +14,7 @@ export interface CurrentUser {
 
 const currentUser = ref<CurrentUser | null>(null)
 const initializing = ref(true)
+let initializationPromise: Promise<void> | null = null
 
 /**
  * 全局登录状态。
@@ -27,15 +29,19 @@ export const useAuth = () => {
 
   /** 应用启动时调用一次，确认浏览器里的 Cookie 是否仍然有效。 */
   const initialize = async () => {
+    if (initializationPromise) return initializationPromise
     initializing.value = true
-    try {
-      const { data } = await api.get<CurrentUser>('/auth/current-user')
-      currentUser.value = data
-    } catch {
-      currentUser.value = null
-    } finally {
-      initializing.value = false
-    }
+    initializationPromise = (async () => {
+      try {
+        const { data } = await api.get<CurrentUser>('/auth/current-user')
+        currentUser.value = data
+      } catch {
+        currentUser.value = null
+      } finally {
+        initializing.value = false
+      }
+    })()
+    return initializationPromise
   }
 
   const login = async (username: string, password: string) => {
@@ -49,6 +55,7 @@ export const useAuth = () => {
       await api.post('/auth/logout')
     } finally {
       currentUser.value = null
+      initializationPromise = null
     }
   }
 
@@ -56,11 +63,13 @@ export const useAuth = () => {
   const changePassword = async (currentPassword: string, newPassword: string) => {
     await api.post('/auth/change-password', { currentPassword, newPassword })
     currentUser.value = null
+    initializationPromise = null
   }
 
   /** 令牌失效时由 axios 拦截器调用，直接把状态置空回到登录页。 */
   const clearSession = () => {
     currentUser.value = null
+    initializationPromise = null
   }
 
   return {

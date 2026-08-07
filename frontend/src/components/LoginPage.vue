@@ -2,11 +2,12 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Alert, Button, Card, Form, FormItem, Input, InputPassword, Modal, message } from 'ant-design-vue'
 import { AppstoreOutlined } from '@ant-design/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 
-const emit = defineEmits<{ (event: 'logged-in'): void }>()
-
 const { login, changePassword, isLoggedIn, mustChangePassword } = useAuth()
+const route = useRoute()
+const router = useRouter()
 
 // 首次登录或管理员重置密码后，服务端会要求先改密才能进入系统。
 // 初始化时也读取全局状态，避免用户刷新页面后遗漏改密弹窗。
@@ -43,7 +44,10 @@ const submitLogin = async () => {
       passwordForm.currentPassword = loginForm.password
       changePasswordOpen.value = true
     }
-    emit('logged-in')
+    const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+      ? route.query.redirect
+      : { name: 'dashboard' }
+    await router.replace(redirect)
   } catch (error) {
     errorMessage.value = extractMessage(error, '登录失败，请重试')
   } finally {
@@ -70,6 +74,7 @@ const submitPasswordChange = async () => {
     // 服务端改密后会清除全部会话，因此这里改完需要用新密码重新登录。
     await changePassword(passwordForm.currentPassword, passwordForm.newPassword)
     message.success('密码已修改，请使用新密码登录')
+    await router.replace({ name: 'login' })
     changePasswordOpen.value = false
     loginForm.password = ''
     passwordForm.currentPassword = ''

@@ -6,14 +6,18 @@ import java.time.LocalDate;
 final class RequirementSpecifications {
     private RequirementSpecifications() { }
 
-    static Specification<RequirementEntity> filtered(Long systemId, boolean unassignedSystem, Long targetVersionId, String department, String requesterName, RequirementType type, RequirementStatus status, RequirementSaveType saveType, String keyword, LocalDate submittedFrom, LocalDate submittedTo, LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
+    static Specification<RequirementEntity> filtered(Long systemId, boolean unassignedSystem, Long targetVersionId,
+                                                     Long departmentId, String requesterName, Long typeId,
+                                                     RequirementStatus status, RequirementSaveType saveType,
+                                                     String keyword, LocalDate submittedFrom, LocalDate submittedTo,
+                                                     LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
         Specification<RequirementEntity> specification = (root, query, criteriaBuilder) -> criteriaBuilder.isFalse(root.get("deleted"));
         if (systemId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("system").get("id"), systemId));
         if (unassignedSystem) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.isNull(root.get("system")));
         if (targetVersionId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("targetVersion").get("id"), targetVersionId));
-        if (hasText(department)) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("department"), department.trim()));
+        if (departmentId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("department").get("id"), departmentId));
         if (hasText(requesterName)) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("requesterName"), requesterName.trim()));
-        if (type != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("type"), type));
+        if (typeId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("type").get("id"), typeId));
         if (status != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("status"), status));
         if (saveType != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("saveType"), saveType));
         if (hasText(keyword)) {

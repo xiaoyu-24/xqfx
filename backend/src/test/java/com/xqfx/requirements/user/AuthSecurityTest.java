@@ -7,6 +7,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import com.xqfx.requirements.dictionary.DictionaryService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -14,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-@Import({AuthService.class, UserService.class})
+@Import({AuthService.class, UserService.class, DictionaryService.class})
 class AuthSecurityTest {
 
     @Autowired
@@ -37,7 +38,7 @@ class AuthSecurityTest {
 
     @Test
     void loginWithCorrectPassword_succeeds() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", "IT部", false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         assertThat(loginResponse.user().username()).isEqualTo("alice");
@@ -46,7 +47,7 @@ class AuthSecurityTest {
 
     @Test
     void loginWithWrongPassword_fails() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", "IT部", false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("alice", "wrong")))
                 .isInstanceOf(AuthService.AuthenticationException.class)
@@ -55,7 +56,7 @@ class AuthSecurityTest {
 
     @Test
     void loginWithDisabledAccount_fails() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", "IT部", false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
         userService.updateDisabled(created.user().id(), true);
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("alice", created.initialPassword())))
@@ -65,7 +66,7 @@ class AuthSecurityTest {
 
     @Test
     void loginFailureRateLimiting_locksAccountAfter5Failures() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", "IT部", false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
 
         for (int i = 0; i < 5; i++) {
             try {
@@ -89,7 +90,7 @@ class AuthSecurityTest {
 
     @Test
     void authenticateWithValidToken_returnsUser() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", "IT部", false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         var authenticated = authService.authenticate(loginResponse.token());
@@ -106,7 +107,7 @@ class AuthSecurityTest {
 
     @Test
     void authenticateAfterAccountDisabled_returnsEmptyAndClearsSession() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", "IT部", false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         userService.updateDisabled(created.user().id(), true);
@@ -118,7 +119,7 @@ class AuthSecurityTest {
 
     @Test
     void changePassword_invalidatesAllSessions() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", "IT部", false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         authService.changePassword(created.user().id(),
@@ -130,7 +131,7 @@ class AuthSecurityTest {
 
     @Test
     void resetPassword_invalidatesAllSessions() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", "IT部", false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         userService.resetPassword(created.user().id());

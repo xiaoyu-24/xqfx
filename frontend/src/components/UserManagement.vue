@@ -3,12 +3,13 @@ import { onMounted, reactive, ref } from 'vue'
 import { Button, Card, Input, Modal, Select, SelectOption, Switch, Table, Tag, message } from 'ant-design-vue'
 import { LockOutlined, PlusOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
-import { DEPARTMENTS } from '../constants/departments'
+import { useDictionaryOptions } from '../composables/useDictionaryOptions'
 
 interface User {
   id: number
   username: string
   displayName: string
+  departmentId: number | null
   department: string | null
   admin: boolean
   disabled: boolean
@@ -25,9 +26,11 @@ const saving = ref(false)
 const form = reactive({
   username: '',
   displayName: '',
-  department: '',
+  departmentId: '',
   admin: false,
 })
+
+const { departments, loadDictionaryOptions } = useDictionaryOptions()
 
 const columns = [
   { title: '账号', dataIndex: 'username', key: 'username', width: 150 },
@@ -50,14 +53,16 @@ const loadUsers = async () => {
   }
 }
 
-onMounted(loadUsers)
+onMounted(async () => {
+  await Promise.all([loadUsers(), loadDictionaryOptions().catch(() => message.warning('部门列表加载失败'))])
+})
 
 const openCreateModal = () => {
   modalTitle.value = '新增人员'
   editingId.value = null
   form.username = ''
   form.displayName = ''
-  form.department = ''
+  form.departmentId = ''
   form.admin = false
   modalOpen.value = true
 }
@@ -72,7 +77,7 @@ const handleSave = async () => {
     await api.post('/users', {
       username: form.username.trim(),
       displayName: form.displayName.trim(),
-      department: form.department || null,
+      departmentId: form.departmentId ? Number(form.departmentId) : null,
       admin: form.admin,
     })
     modalOpen.value = false
@@ -198,9 +203,9 @@ const handleToggleDisabled = async (user: Pick<User, 'id' | 'disabled'>) => {
         </div>
         <div>
           <label style="display: block; margin-bottom: 4px; font-size: 14px">部门</label>
-          <Select v-model:value="form.department" placeholder="请选择" allow-clear>
-            <SelectOption v-for="dept in DEPARTMENTS" :key="dept" :value="dept">
-              {{ dept }}
+          <Select v-model:value="form.departmentId" placeholder="请选择" allow-clear>
+            <SelectOption v-for="department in departments" :key="department.id" :value="String(department.id)">
+              {{ department.name }}
             </SelectOption>
           </Select>
         </div>

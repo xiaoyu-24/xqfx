@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { Button, Card, Empty, Form, FormItem, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { entityStatusMeta } from '../constants/statusConfig'
 import { markChanged } from '../composables/refreshBus'
@@ -19,10 +20,7 @@ type SystemItem = {
   requirementCount: number
 }
 
-const emit = defineEmits<{
-  'view-requirements': [systemId: number]
-}>()
-
+const router = useRouter()
 const { handleError } = useApiError()
 
 const systems = ref<SystemItem[]>([])
@@ -170,7 +168,7 @@ const migrateRequirements = async () => {
 }
 
 const viewRequirements = (systemId: number) => {
-  emit('view-requirements', systemId)
+  void router.push({ name: 'requirement-list', query: { systemId: String(systemId) } })
 }
 
 usePageRefresh('systems', loadSystems)

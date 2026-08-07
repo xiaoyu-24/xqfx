@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { Card, Col, Row, Statistic, Tag } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { subscribeToRefresh } from '../composables/refreshBus'
 import { requirementStatusMeta } from '../constants/statusConfig'
 
-const emit = defineEmits<{
-  navigate: [filter: { saveType?: string; status?: string }]
-}>()
+const router = useRouter()
 
 interface DashboardSummary {
   total: number
@@ -41,6 +40,10 @@ const refreshStatusEntries = () => {
   statusEntries.value = Object.entries(summary.value.statusCounts).map(([key, count]) => ({ key, count }))
 }
 
+const navigateToRequirements = (filter: { saveType?: string; status?: string }) => {
+  void router.push({ name: 'requirement-list', query: filter })
+}
+
 // Watch summary changes
 import { watch } from 'vue'
 watch(summary, refreshStatusEntries, { immediate: true, deep: true })
@@ -50,12 +53,12 @@ watch(summary, refreshStatusEntries, { immediate: true, deep: true })
   <section class="dashboard-shell">
     <Row :gutter="[16, 16]">
       <Col :xs="12" :sm="8" :md="6">
-        <Card class="stat-card" hoverable :loading="loading" @click="emit('navigate', { saveType: 'SUBMITTED' })">
+        <Card class="stat-card" hoverable :loading="loading" @click="navigateToRequirements({ saveType: 'SUBMITTED' })">
           <Statistic title="已提交需求" :value="summary.total" />
         </Card>
       </Col>
       <Col :xs="12" :sm="8" :md="6">
-        <Card class="stat-card" hoverable :loading="loading" @click="emit('navigate', { saveType: 'DRAFT' })">
+        <Card class="stat-card" hoverable :loading="loading" @click="navigateToRequirements({ saveType: 'DRAFT' })">
           <Statistic title="草稿" :value="summary.draftCount" />
         </Card>
       </Col>
@@ -64,7 +67,7 @@ watch(summary, refreshStatusEntries, { immediate: true, deep: true })
     <h3 class="section-title">处理状态</h3>
     <Row :gutter="[16, 16]">
       <Col v-for="entry in statusEntries" :key="entry.key" :xs="12" :sm="8" :md="6">
-        <Card class="stat-card" hoverable :loading="loading" @click="emit('navigate', { status: entry.key })">
+        <Card class="stat-card" hoverable :loading="loading" @click="navigateToRequirements({ status: entry.key })">
           <Statistic :value="entry.count">
             <template #title>
               <Tag :color="requirementStatusMeta(entry.key).color">{{ requirementStatusMeta(entry.key).label }}</Tag>

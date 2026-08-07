@@ -78,6 +78,17 @@ button { font: inherit; }
   font-size: 13px;
 }
 
+.requirement-title-link {
+  color: #1677ff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.requirement-title-link:hover {
+  color: #4096ff;
+  text-decoration: underline;
+}
+
 .field-requirement-legend {
   margin: 0 0 18px;
   padding: 10px 12px;

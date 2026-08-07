@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { Button, Card, Collapse, CollapsePanel, DatePicker, Form, Input, Radio, Select, message } from 'ant-design-vue'
+import { Button, Card, Collapse, CollapsePanel, DatePicker, Form, Input, Select, message } from 'ant-design-vue'
 import { RobotOutlined } from '@ant-design/icons-vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api'
-import { DEPARTMENTS } from '../constants/departments'
 import { markChanged } from '../composables/refreshBus'
+import { useCreateFormState } from '../composables/useCreateFormState'
+import { useDictionaryOptions } from '../composables/useDictionaryOptions'
 
 type SystemMode = 'existing' | 'new' | 'none'
 
-const emit = defineEmits<{
-  'dirty-change': [value: boolean]
-  submitted: []
-}>()
-
+const router = useRouter()
+const { setCreateFormDirty } = useCreateFormState()
 const systemSelect = ref('')
 const systemMode = computed<SystemMode>(() => {
   if (systemSelect.value === 'new') return 'new'
@@ -21,9 +20,9 @@ const systemMode = computed<SystemMode>(() => {
 })
 const form = reactive({
   requesterName: '',
-  department: '',
+  departmentId: '',
   title: '',
-  type: 'REQUIREMENT',
+  typeId: '',
   periodStartDate: '',
   periodEndDate: '',
   systemId: '',
@@ -36,6 +35,7 @@ const form = reactive({
 
 const aiText = ref('')
 const aiAnalyzing = ref(false)
+const { departments, requirementTypes, loadDictionaryOptions } = useDictionaryOptions()
 
 const analyzeWithAi = async () => {
   if (!aiText.value.trim()) {
@@ -47,9 +47,9 @@ const analyzeWithAi = async () => {
     const { data } = await api.post('/ai/analyze', { text: aiText.value })
     let filled = 0
     if (data.requesterName && !form.requesterName) { form.requesterName = data.requesterName; filled++ }
-    if (data.department && !form.department) { form.department = data.department; filled++ }
+    if (data.departmentId && !form.departmentId) { form.departmentId = String(data.departmentId); filled++ }
     if (data.title && !form.title) { form.title = data.title; filled++ }
-    if (data.type && !form.type) { form.type = data.type; filled++ }
+    if (data.typeId && !form.typeId) { form.typeId = String(data.typeId); filled++ }
     if (data.content && !form.content) { form.content = data.content; filled++ }
     if (data.periodStartDate && !form.periodStartDate) { form.periodStartDate = data.periodStartDate; filled++ }
     if (data.periodEndDate && !form.periodEndDate) { form.periodEndDate = data.periodEndDate; filled++ }
@@ -112,10 +112,15 @@ const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
   event.returnValue = ''
 }
 
-watch(isDirty, (value) => emit('dirty-change', value), { immediate: true })
+watch(isDirty, setCreateFormDirty, { immediate: true })
 
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnloadHandler)
+  try {
+    await loadDictionaryOptions()
+  } catch {
+    message.warning('部门和需求类型加载失败，请稍后重试')
+  }
   try {
     systems.value = (await api.get('/systems')).data.filter((system: { status: string }) => system.status === 'ACTIVE')
   } catch {
@@ -125,7 +130,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', beforeUnloadHandler)
-  emit('dirty-change', false)
+  setCreateFormDirty(false)
 })
 
 const loadVersions = async () => {
@@ -149,7 +154,10 @@ const onSystemSelectChange = async () => {
   }
 }
 const requestBody = () => ({
-  requesterName: form.requesterName, department: form.department, title: form.title, type: form.type,
+  requesterName: form.requesterName,
+  departmentId: form.departmentId ? Number(form.departmentId) : null,
+  title: form.title,
+  typeId: form.typeId ? Number(form.typeId) : null,
   content: form.content, periodStartDate: form.periodStartDate || null, periodEndDate: form.periodEndDate || null,
   systemId: systemMode.value === 'existing' && form.systemId ? Number(form.systemId) : null,
   targetVersionId: systemMode.value === 'existing' && form.targetVersionId ? Number(form.targetVersionId) : null,
@@ -213,7 +221,7 @@ const submit = async (draft: boolean) => {
     markChanged(shouldRefreshSystemPages
       ? ['requirements', 'management', 'systems', 'versions', 'dashboard']
       : ['requirements', 'management', 'dashboard'])
-    if (!draft) emit('submitted')
+    if (!draft) await router.push({ name: 'requirement-list' })
   } catch {
     message.error('保存失败，请检查填写内容后重试')
   } finally { submitting.value = false }
@@ -230,7 +238,7 @@ const submit = async (draft: boolean) => {
             <span class="ai-import-header"><RobotOutlined /> AI 智能导入</span>
           </template>
           <p class="ai-import-hint">粘贴一段需求描述文本，AI 将自动识别并填充空白字段（已有内容不会被覆盖，不会自动提交）。</p>
-          <Input.TextArea v-model:value="aiText" :rows="4" placeholder="请粘贴需求描述文本…" />
+          <Input.TextArea v-model:value="aiText" data-test="ai-import-text" :rows="4" placeholder="请粘贴需求描述文本…" />
           <Button class="ai-analyze-btn" type="primary" ghost :loading="aiAnalyzing" @click="analyzeWithAi">分析并填充</Button>
         </CollapsePanel>
       </Collapse>
@@ -244,8 +252,8 @@ const submit = async (draft: boolean) => {
           </Form.Item>
 
           <Form.Item label="部门" required>
-            <Select v-model:value="form.department" data-test="department-select" placeholder="请选择部门" class="department-select">
-              <Select.Option v-for="department in DEPARTMENTS" :key="department" :value="department">{{ department }}</Select.Option>
+            <Select v-model:value="form.departmentId" data-test="department-select" placeholder="请选择部门" class="department-select">
+              <Select.Option v-for="department in departments" :key="department.id" :value="String(department.id)">{{ department.name }}</Select.Option>
             </Select>
           </Form.Item>
 
@@ -254,10 +262,9 @@ const submit = async (draft: boolean) => {
           </Form.Item>
 
           <Form.Item label="类型" required>
-            <Radio.Group v-model:value="form.type">
-              <Radio value="BUG">BUG</Radio>
-              <Radio value="REQUIREMENT">需求</Radio>
-            </Radio.Group>
+            <Select v-model:value="form.typeId" placeholder="请选择需求类型">
+              <Select.Option v-for="type in requirementTypes" :key="type.id" :value="String(type.id)">{{ type.name }}</Select.Option>
+            </Select>
           </Form.Item>
 
           <Form.Item class="period-form-item" label="需求时间周期（上海时间）" data-test="period-field" :validate-status="periodError ? 'error' : undefined" :help="periodError || undefined">

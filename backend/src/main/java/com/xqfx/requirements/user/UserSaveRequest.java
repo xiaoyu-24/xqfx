@@ -2,6 +2,7 @@ package com.xqfx.requirements.user;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 public record UserSaveRequest(
@@ -14,8 +15,8 @@ public record UserSaveRequest(
         @Size(max = 50, message = "姓名最长 50 位")
         String displayName,
 
-        @Size(max = 50, message = "部门最长 50 位")
-        String department,
+        @Positive(message = "部门选择无效")
+        Long departmentId,
 
         boolean admin) {
 }

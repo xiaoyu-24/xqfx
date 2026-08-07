@@ -1,10 +1,13 @@
 package com.xqfx.requirements.user;
 
+import com.xqfx.requirements.dictionary.DictionaryItemEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -37,8 +40,9 @@ public class UserEntity {
     @Column(nullable = false, length = 50)
     private String displayName;
 
-    @Column(length = 50)
-    private String department;
+    @ManyToOne
+    @JoinColumn(name = "department_id")
+    private DictionaryItemEntity department;
 
     @Column(nullable = false)
     private boolean adminRole = false;
@@ -63,7 +67,8 @@ public class UserEntity {
     protected UserEntity() {
     }
 
-    UserEntity(String username, String passwordHash, String displayName, String department, boolean adminRole) {
+    UserEntity(String username, String passwordHash, String displayName,
+               DictionaryItemEntity department, boolean adminRole) {
         this.username = username;
         this.passwordHash = passwordHash;
         this.displayName = displayName;
@@ -87,7 +92,7 @@ public class UserEntity {
         return displayName;
     }
 
-    public String department() {
+    public DictionaryItemEntity department() {
         return department;
     }
 
@@ -103,7 +108,7 @@ public class UserEntity {
         return mustChangePassword;
     }
 
-    void updateProfile(String displayName, String department, boolean adminRole) {
+    void updateProfile(String displayName, DictionaryItemEntity department, boolean adminRole) {
         this.displayName = displayName;
         this.department = department;
         this.adminRole = adminRole;

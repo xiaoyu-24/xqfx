@@ -1,5 +1,8 @@
 package com.xqfx.requirements.user;
 
+import com.xqfx.requirements.dictionary.DictionaryCategory;
+import com.xqfx.requirements.dictionary.DictionaryItemEntity;
+import com.xqfx.requirements.dictionary.DictionaryService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,10 +15,12 @@ public class UserService {
 
     private final UserRepository repository;
     private final AuthService authService;
+    private final DictionaryService dictionaries;
 
-    UserService(UserRepository repository, AuthService authService) {
+    UserService(UserRepository repository, AuthService authService, DictionaryService dictionaries) {
         this.repository = repository;
         this.authService = authService;
+        this.dictionaries = dictionaries;
     }
 
     @Transactional(readOnly = true)
@@ -41,7 +46,7 @@ public class UserService {
                 username,
                 authService.encodePassword(initialPassword),
                 request.displayName().trim(),
-                blankToNull(request.department()),
+                resolveOptionalActiveDepartment(request.departmentId()),
                 request.admin());
         repository.save(user);
         return new CreatedUser(UserResponse.from(user), initialPassword);
@@ -53,7 +58,8 @@ public class UserService {
         if (user.isAdmin() && !request.admin() && isLastActiveAdmin(user)) {
             throw new IllegalArgumentException("至少需要保留一个启用中的管理员");
         }
-        user.updateProfile(request.displayName().trim(), blankToNull(request.department()), request.admin());
+        user.updateProfile(request.displayName().trim(),
+                resolveDepartmentForUpdate(request.departmentId(), user.department()), request.admin());
         repository.save(user);
         return UserResponse.from(user);
     }
@@ -93,8 +99,21 @@ public class UserService {
                 .noneMatch(other -> !other.id().equals(candidate.id()));
     }
 
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+    private DictionaryItemEntity resolveOptionalActiveDepartment(Long departmentId) {
+        return departmentId == null
+                ? null
+                : dictionaries.requireActive(departmentId, DictionaryCategory.DEPARTMENT, "部门");
+    }
+
+    /** 已关联的停用部门允许保留，不能主动换到其他停用部门。 */
+    private DictionaryItemEntity resolveDepartmentForUpdate(Long requestedId, DictionaryItemEntity current) {
+        if (requestedId == null) {
+            return null;
+        }
+        if (current != null && current.id().equals(requestedId)) {
+            return current;
+        }
+        return dictionaries.requireActive(requestedId, DictionaryCategory.DEPARTMENT, "部门");
     }
 
     public record CreatedUser(UserResponse user, String initialPassword) {
