@@ -24,7 +24,12 @@ class ApiExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ApiError handleValidation(MethodArgumentNotValidException exception) {
-        return new ApiError("请求参数无效", null);
+        var firstMessage = exception.getBindingResult().getFieldErrors().stream()
+                .map(error -> error.getDefaultMessage())
+                .filter(message -> message != null && !message.isBlank())
+                .findFirst()
+                .orElse("请求参数无效");
+        return new ApiError(firstMessage, null);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
