@@ -4,6 +4,7 @@ import AiConfigPage from '../components/AiConfigPage.vue'
 import Dashboard from '../components/Dashboard.vue'
 import DictionaryManagement from '../components/DictionaryManagement.vue'
 import LoginPage from '../components/LoginPage.vue'
+import NotificationCenter from '../components/NotificationCenter.vue'
 import RequirementForm from '../components/RequirementForm.vue'
 import RequirementDetail from '../components/RequirementDetail.vue'
 import RequirementList from '../components/RequirementList.vue'
@@ -42,7 +43,7 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'dashboard',
     component: Dashboard,
-    meta: protectedPage('dashboard', '数据看板', '总览需求提交与处理状态。'),
+    meta: protectedPage('dashboard', '待办工作台', '查看当前账号负责和协助处理的系统需求。'),
   },
   {
     path: '/requirements/new',
@@ -61,6 +62,12 @@ const routes: RouteRecordRaw[] = [
     name: 'requirement-detail',
     component: RequirementDetail,
     meta: protectedPage('list', '需求详情', '查看需求详情、附件，并可直接编辑。'),
+  },
+  {
+    path: '/notifications',
+    name: 'notification-center',
+    component: NotificationCenter,
+    meta: protectedPage('notifications', '站内消息', '查看需求动态与待处理提醒。'),
   },
   {
     path: '/management',

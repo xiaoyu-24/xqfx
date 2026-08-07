@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import type { TableColumnsType } from 'ant-design-vue'
-import { Button, Card, Col, DatePicker, Form, FormItem, Input, Modal, Pagination, Row, Select, Space, Table, Tag, message } from 'ant-design-vue'
+import { Button, Card, Col, DatePicker, Form, FormItem, Input, Pagination, Row, Select, Space, Table, Tag, message } from 'ant-design-vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { requirementStatusMeta, saveTypeMeta } from '../constants/statusConfig'
 import { markChanged } from '../composables/refreshBus'
 import { useDictionaryOptions } from '../composables/useDictionaryOptions'
 import { usePageRefresh } from '../composables/usePageRefresh'
-import RequirementEditor from './RequirementEditor.vue'
 
 type SystemItem = { id: number; name: string; status: string }
 type VersionItem = { id: number; name: string; status: string }
@@ -35,8 +34,6 @@ const totalPages = ref(0)
 const currentPage = ref(0)
 const pageSize = 20
 const loading = ref(true)
-const editingId = ref<number | null>(null)
-const hasModalOpen = computed(() => editingId.value !== null)
 const { departments, requirementTypes, loadDictionaryOptions } = useDictionaryOptions()
 
 const systemFilterOptions = computed(() => [
@@ -82,21 +79,6 @@ const requirementColumns = [
   { title: '操作', key: 'actions', fixed: 'right' as const, width: 200 },
 ] satisfies TableColumnsType<Item>
 const tableRecord = (record: Record<string, unknown>) => record as Item
-const clearEditRouteQuery = () => {
-  if (route.name !== 'requirement-list' || !route.query.edit) return
-  const query = { ...route.query }
-  delete query.edit
-  void router.replace({ name: 'requirement-list', query })
-}
-const editingOpen = computed({
-  get: () => editingId.value !== null,
-  set: (open: boolean) => {
-    if (!open) {
-      editingId.value = null
-      clearEditRouteQuery()
-    }
-  },
-})
 const systemName = (id: number | null) => id === null ? '暂无系统' : systems.value.find((system) => system.id === id)?.name ?? `系统 #${id}`
 const versionName = (id: number | null, name?: string | null) => id === null ? '—' : name ?? versions.value.find((version) => version.id === id)?.name ?? `版本 #${id}`
 const formatShanghai = (value: string | null | undefined) => {
@@ -204,16 +186,8 @@ const deleteRequirement = async (item: Item) => {
   }
 }
 
-const openEdit = (id: number) => {
-  editingId.value = id
-}
-const closeEdit = () => {
-  editingId.value = null
-  clearEditRouteQuery()
-}
-const finishEdit = async () => {
-  closeEdit()
-  await queryRequirements(currentPage.value)
+const editDetails = (id: number) => {
+  void router.push({ name: 'requirement-detail', params: { id }, query: { edit: '1' } })
 }
 
 const routeQueryValue = (value: unknown) => Array.isArray(value) ? value[0] ?? '' : typeof value === 'string' ? value : ''
@@ -231,8 +205,6 @@ const syncFiltersFromRoute = async () => {
   syncingRouteFilters = false
   await queryRequirements(routePage())
 
-  const editId = Number(routeQueryValue(route.query.edit))
-  if (Number.isSafeInteger(editId) && editId > 0 && editingId.value !== editId) openEdit(editId)
 }
 
 watch(() => route.fullPath, () => {
@@ -242,7 +214,7 @@ watch(() => route.fullPath, () => {
 usePageRefresh('requirements', async () => {
   await Promise.all([loadSystems(), loadDictionaryOptions()])
   await syncFiltersFromRoute()
-}, { isPaused: () => hasModalOpen.value })
+})
 </script>
 
 <template>
@@ -277,14 +249,11 @@ usePageRefresh('requirements', async () => {
           <template v-else-if="column.key === 'period'">{{ record.periodStartDate && record.periodEndDate ? `${record.periodStartDate} 至 ${record.periodEndDate}` : '—' }}</template>
           <template v-else-if="column.key === 'status'"><Tag :color="record.status ? requirementStatusMeta(record.status).color : saveTypeMeta(record.saveType ?? 'DRAFT').color">{{ record.status ? requirementStatusMeta(record.status).label : saveTypeMeta(record.saveType ?? 'DRAFT').label }}</Tag></template>
           <template v-else-if="column.key === 'submittedAt'">{{ formatShanghai(record.submittedAt || record.updatedAt) }}</template>
-          <template v-else-if="column.key === 'actions'"><Space size="small"><Button type="link" size="small" :data-test="`view-${record.id}`" @click="viewDetails(tableRecord(record).id)">查看详情</Button><Button type="link" size="small" :data-test="`edit-${record.id}`" @click="openEdit(tableRecord(record).id)">编辑</Button><Button danger type="link" size="small" :data-test="`delete-${record.id}`" @click="deleteRequirement(tableRecord(record))">删除</Button></Space></template>
+          <template v-else-if="column.key === 'actions'"><Space size="small"><Button type="link" size="small" :data-test="`view-${record.id}`" @click="viewDetails(tableRecord(record).id)">查看详情</Button><Button type="link" size="small" :data-test="`edit-${record.id}`" @click="editDetails(tableRecord(record).id)">编辑</Button><Button danger type="link" size="small" :data-test="`delete-${record.id}`" @click="deleteRequirement(tableRecord(record))">删除</Button></Space></template>
         </template>
         <template #emptyText>{{ loading ? '加载中…' : '暂无需求' }}</template>
       </Table>
       <div class="pagination-bar"><span>共 {{ total }} 条</span><Pagination :current="currentPage + 1" :total="total" :page-size="pageSize" :show-size-changer="false" :disabled="loading" @change="(page) => applyFilters(page - 1)" /></div>
     </Card>
-    <Modal v-model:open="editingOpen" title="编辑需求" :footer="null" :mask-closable="false" destroy-on-close :get-container="false" width="900px">
-      <RequirementEditor v-if="editingId !== null" :key="editingId" :requirement-id="editingId" @cancel="closeEdit" @saved="finishEdit" />
-    </Modal>
   </section>
 </template>

@@ -7,11 +7,13 @@ import { api } from '../api'
 import { markChanged } from '../composables/refreshBus'
 import { useCreateFormState } from '../composables/useCreateFormState'
 import { useDictionaryOptions } from '../composables/useDictionaryOptions'
+import { useAuth } from '../composables/useAuth'
 
 type SystemMode = 'existing' | 'new' | 'none'
 
 const router = useRouter()
 const { setCreateFormDirty } = useCreateFormState()
+const { currentUser } = useAuth()
 const systemSelect = ref('')
 const systemMode = computed<SystemMode>(() => {
   if (systemSelect.value === 'new') return 'new'
@@ -28,8 +30,8 @@ const form = reactive({
   systemId: '',
   targetVersionId: '',
   newSystemName: '',
-  newSystemOwnerName: '',
-  newSystemCollaborators: '',
+  newSystemOwnerUserId: undefined as number | undefined,
+  newSystemCollaboratorUserIds: [] as number[],
   content: '',
 })
 
@@ -75,6 +77,7 @@ const analyzeWithAi = async () => {
 
 const submitting = ref(false)
 const systems = ref<Array<{ id: number; name: string; status: string }>>([])
+const activeUsers = ref<Array<{ id: number; username: string; displayName: string }>>([])
 const versions = ref<Array<{ id: number; name: string; status: string }>>([])
 const selectedFiles = ref<File[]>([])
 const uploadedAttachments = ref<Array<{ id: number; originalName: string }>>([])
@@ -114,6 +117,15 @@ const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
 
 watch(isDirty, setCreateFormDirty, { immediate: true })
 
+watch(currentUser, (user) => {
+  if (!user) return
+  if (!form.requesterName.trim()) form.requesterName = user.displayName
+  if (user.departmentId !== null) {
+    form.departmentId = String(user.departmentId)
+  }
+  lastSavedSnapshot.value = createSnapshot()
+}, { immediate: true })
+
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnloadHandler)
   try {
@@ -125,6 +137,11 @@ onMounted(async () => {
     systems.value = (await api.get('/systems')).data.filter((system: { status: string }) => system.status === 'ACTIVE')
   } catch {
     message.warning('系统列表加载失败，可选择新系统或稍后重试')
+  }
+  try {
+    activeUsers.value = (await api.get('/users/active')).data
+  } catch {
+    message.warning('启用账号列表加载失败，新系统负责人暂不可选')
   }
 })
 
@@ -161,7 +178,11 @@ const requestBody = () => ({
   content: form.content, periodStartDate: form.periodStartDate || null, periodEndDate: form.periodEndDate || null,
   systemId: systemMode.value === 'existing' && form.systemId ? Number(form.systemId) : null,
   targetVersionId: systemMode.value === 'existing' && form.targetVersionId ? Number(form.targetVersionId) : null,
-  newSystem: systemMode.value === 'new' ? { name: form.newSystemName, ownerName: form.newSystemOwnerName, collaborators: form.newSystemCollaborators.split(',').map((item) => item.trim()).filter(Boolean) } : null,
+  newSystem: systemMode.value === 'new' ? {
+    name: form.newSystemName,
+    ownerUserId: form.newSystemOwnerUserId,
+    collaboratorUserIds: form.newSystemCollaboratorUserIds,
+  } : null,
 })
 const addFiles = (files: File[]) => {
   const accepted: File[] = []
@@ -208,6 +229,10 @@ const submit = async (draft: boolean) => {
     message.warning(periodError.value)
     return
   }
+  if (systemMode.value === 'new' && form.newSystemOwnerUserId === undefined) {
+    message.warning('请选择新系统负责人账号')
+    return
+  }
   submitting.value = true
   try {
     const body = requestBody()
@@ -248,11 +273,11 @@ const submit = async (draft: boolean) => {
       <Form :model="form" layout="vertical" class="requirement-form" @submit.prevent="submit(false)">
         <div class="form-grid">
           <Form.Item data-test="requester-name-field" label="姓名" required>
-            <Input v-model:value="form.requesterName" required placeholder="请输入姓名" />
+            <Input v-model:value="form.requesterName" required placeholder="请输入提出人姓名" />
           </Form.Item>
 
           <Form.Item label="部门" required>
-            <Select v-model:value="form.departmentId" data-test="department-select" placeholder="请选择部门" class="department-select">
+            <Select v-model:value="form.departmentId" data-test="department-select" placeholder="请选择部门" class="department-select" :disabled="currentUser?.departmentId !== null && currentUser?.departmentId !== undefined">
               <Select.Option v-for="department in departments" :key="department.id" :value="String(department.id)">{{ department.name }}</Select.Option>
             </Select>
           </Form.Item>
@@ -295,11 +320,25 @@ const submit = async (draft: boolean) => {
             <Form.Item data-test="new-system-name-field" label="新系统名称" required>
               <Input v-model:value="form.newSystemName" :required="systemMode === 'new'" placeholder="请输入系统名称" />
             </Form.Item>
-            <Form.Item label="新系统负责人" required>
-              <Input v-model:value="form.newSystemOwnerName" :required="systemMode === 'new'" placeholder="请输入负责人姓名" />
+            <Form.Item label="新系统负责人账号" required>
+              <Select
+                v-model:value="form.newSystemOwnerUserId"
+                :options="activeUsers.map((user) => ({ value: user.id, label: `${user.displayName}（${user.username}）` }))"
+                :required="systemMode === 'new'"
+                placeholder="请选择启用账号"
+                show-search
+                option-filter-prop="label"
+              />
             </Form.Item>
-            <Form.Item class="full-width" data-test="new-system-collaborators-field" label="新系统协助人">
-              <Input v-model:value="form.newSystemCollaborators" placeholder="多人请用逗号分隔" />
+            <Form.Item class="full-width" data-test="new-system-collaborators-field" label="新系统协助账号">
+              <Select
+                v-model:value="form.newSystemCollaboratorUserIds"
+                mode="multiple"
+                :options="activeUsers.map((user) => ({ value: user.id, label: `${user.displayName}（${user.username}）` }))"
+                placeholder="请选择协助账号"
+                show-search
+                option-filter-prop="label"
+              />
             </Form.Item>
           </template>
 

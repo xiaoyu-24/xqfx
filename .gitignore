@@ -19,7 +19,7 @@ application-local.yml
 application-prod.yml
 
 # Markdown documents and local test reports
-*.md
+
 test-results/
 
 # Local runtime logs and temporary files

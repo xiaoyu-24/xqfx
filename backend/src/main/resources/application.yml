@@ -34,3 +34,6 @@ app:
   ai:
     encryption-key: ${AI_ENCRYPTION_KEY:}
     request-timeout-seconds: ${AI_REQUEST_TIMEOUT_SECONDS:30}
+  notifications:
+    reminder-cron: ${NOTIFICATIONS_REMINDER_CRON:0 0 9 * * *}
+    stale-after-days: ${NOTIFICATIONS_STALE_AFTER_DAYS:7}

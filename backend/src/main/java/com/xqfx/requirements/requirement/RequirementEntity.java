@@ -3,6 +3,7 @@ package com.xqfx.requirements.requirement;
 import com.xqfx.requirements.dictionary.DictionaryItemEntity;
 import com.xqfx.requirements.system.SystemEntity;
 import com.xqfx.requirements.system.SystemVersionEntity;
+import com.xqfx.requirements.user.UserEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -33,6 +34,14 @@ class RequirementEntity {
     private long recordVersion;
 
     private String requesterName;
+
+    @ManyToOne
+    @JoinColumn(name = "requester_user_id")
+    private UserEntity requesterUser;
+
+    @ManyToOne
+    @JoinColumn(name = "assignee_user_id")
+    private UserEntity assignee;
 
     @ManyToOne
     @JoinColumn(name = "department_id")
@@ -85,9 +94,10 @@ class RequirementEntity {
     protected RequirementEntity() {
     }
 
-    RequirementEntity(String requesterName, DictionaryItemEntity department, String title,
+    RequirementEntity(UserEntity requesterUser, String requesterName, DictionaryItemEntity department, String title,
                       DictionaryItemEntity type, String content, SystemEntity system,
                       SystemVersionEntity targetVersion, RequirementPeriod period) {
+        this.requesterUser = requesterUser;
         this.requesterName = requesterName;
         this.department = department;
         this.title = title;
@@ -101,10 +111,11 @@ class RequirementEntity {
         this.status = RequirementStatus.PENDING_EVALUATION;
     }
 
-    static RequirementEntity draft(String requesterName, DictionaryItemEntity department, String title,
+    static RequirementEntity draft(UserEntity requesterUser, String requesterName, DictionaryItemEntity department, String title,
                                    DictionaryItemEntity type, String content, SystemEntity system,
                                    SystemVersionEntity targetVersion, RequirementPeriod period) {
         var draft = new RequirementEntity();
+        draft.requesterUser = requesterUser;
         draft.requesterName = requesterName;
         draft.department = department;
         draft.title = title;
@@ -121,6 +132,8 @@ class RequirementEntity {
     Long id() { return id; }
     long recordVersion() { return recordVersion; }
     String requesterName() { return requesterName; }
+    UserEntity requesterUser() { return requesterUser; }
+    UserEntity assignee() { return assignee; }
     DictionaryItemEntity department() { return department; }
     String title() { return title; }
     DictionaryItemEntity type() { return type; }
@@ -139,24 +152,23 @@ class RequirementEntity {
     String handledBy() { return handledBy; }
     String completionDescription() { return completionDescription; }
 
-    void updateStatus(RequirementStatus status) {
+    void updateStatusFromProgress(RequirementStatus status) {
         this.status = status;
-        this.statusUpdatedAt = now();
     }
 
-    void updateProcessing(RequirementStatus status, LocalDateTime completedAt,
-                          String handledBy, String completionDescription) {
-        this.status = status;
-        this.completedAt = completedAt;
-        this.handledBy = handledBy;
-        this.completionDescription = completionDescription;
-        this.statusUpdatedAt = now();
+    void assign(UserEntity assignee) {
+        this.assignee = assignee;
+    }
+
+    void linkRequesterUserIfMissing(UserEntity requesterUser) {
+        if (this.requesterUser == null) {
+            this.requesterUser = requesterUser;
+        }
     }
 
     void update(String requesterName, DictionaryItemEntity department, String title,
                 DictionaryItemEntity type, String content, SystemEntity system,
-                SystemVersionEntity targetVersion, RequirementPeriod period,
-                RequirementStatus status) {
+                SystemVersionEntity targetVersion, RequirementPeriod period) {
         this.requesterName = requesterName;
         this.department = department;
         this.title = title;
@@ -169,11 +181,7 @@ class RequirementEntity {
         if (isDraft()) {
             this.saveType = RequirementSaveType.SUBMITTED;
             this.submittedAt = now();
-            this.status = status == null ? RequirementStatus.PENDING_EVALUATION : status;
-            this.statusUpdatedAt = now();
-        } else if (status != null) {
-            this.status = status;
-            this.statusUpdatedAt = now();
+            this.status = RequirementStatus.PENDING_EVALUATION;
         }
     }
 
@@ -207,7 +215,6 @@ class RequirementEntity {
         updatedAt = now;
         if (saveType == RequirementSaveType.SUBMITTED) {
             submittedAt = now;
-            statusUpdatedAt = now;
         }
     }
 

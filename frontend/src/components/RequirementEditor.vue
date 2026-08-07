@@ -262,7 +262,6 @@ const save = async (submitDraft = false) => {
     targetVersionId: form.targetVersionId ? Number(form.targetVersionId) : null,
     periodStartDate: form.periodStartDate || null,
     periodEndDate: form.periodEndDate || null,
-    status: form.status || null,
     recordVersion: form.recordVersion,
   }
   try {
@@ -300,7 +299,7 @@ onBeforeUnmount(clearPreviewRefresh)
           <Col :xs="24" :md="12"><FormItem label="部门" :required="!isDraft"><Select v-model:value="form.departmentId" data-test="edit-department-select" :options="departmentOptions" /></FormItem></Col>
           <Col :span="24"><FormItem data-test="edit-title-field" label="需求标题" :required="!isDraft"><Input v-model:value="form.title" data-test="edit-title" :required="!isDraft" /></FormItem></Col>
           <Col :xs="24" :md="12"><FormItem label="类型" :required="!isDraft"><Select v-model:value="form.typeId" :options="typeOptions" :required="!isDraft" /></FormItem></Col>
-          <Col :xs="24" :md="12"><FormItem label="需求状态" :required="!isDraft"><Select v-model:value="form.status" data-test="edit-status" :options="statusOptions" :disabled="isDraft" /></FormItem></Col>
+          <Col :xs="24" :md="12"><FormItem label="当前状态"><Select v-model:value="form.status" data-test="edit-status" :options="statusOptions" disabled placeholder="提交后默认为待评估" /></FormItem></Col>
           <Col :xs="24" :md="12"><FormItem label="所属系统"><Select v-model:value="form.systemId" :options="systemOptions" @change="changeSystem" /></FormItem></Col>
           <Col :xs="24" :md="12"><FormItem label="目标版本"><Select v-model:value="form.targetVersionId" :disabled="!form.systemId" :options="versionOptions" /></FormItem></Col>
           <Col :span="24" data-test="edit-period-field"><FormItem label="需求时间周期"><Space wrap><DatePicker v-model:value="form.periodStartDate" value-format="YYYY-MM-DD" placeholder="开始日期" /><span>至</span><DatePicker v-model:value="form.periodEndDate" value-format="YYYY-MM-DD" placeholder="结束日期" /></Space></FormItem></Col>

@@ -13,24 +13,33 @@ type SystemItem = {
   id: number
   name: string
   ownerName: string
+  ownerUserId: number | null
   collaborators: string[]
+  collaboratorUserIds: number[]
   status: SystemStatus
   recordVersion: number
   versionCount: number
   requirementCount: number
 }
 
+type ActiveUser = {
+  id: number
+  username: string
+  displayName: string
+}
+
 const router = useRouter()
 const { handleError } = useApiError()
 
 const systems = ref<SystemItem[]>([])
+const activeUsers = ref<ActiveUser[]>([])
 const loading = ref(true)
 const nameFilter = ref('')
 const ownerFilter = ref('')
 const collaboratorFilter = ref('')
 const statusFilter = ref('')
 const systemFormMode = ref<'create' | 'edit' | null>(null)
-const systemForm = reactive({ id: 0, name: '', ownerName: '', collaborators: '', recordVersion: 0 })
+const systemForm = reactive({ id: 0, name: '', ownerUserId: undefined as number | undefined, collaboratorUserIds: [] as number[], recordVersion: 0 })
 const migrationSourceId = ref<number | null>(null)
 const unassignedMigrationTarget = '__unassigned__'
 const migrationTargetId = ref<number | typeof unassignedMigrationTarget>(unassignedMigrationTarget)
@@ -48,6 +57,10 @@ const statusOptions = [
   { value: 'ACTIVE', label: '启用' },
   { value: 'INACTIVE', label: '停用' },
 ]
+const activeUserOptions = computed(() => activeUsers.value.map((user) => ({
+  value: user.id,
+  label: `${user.displayName}（${user.username}）`,
+})))
 
 const filteredSystems = computed(() => {
   const normalizedName = nameFilter.value.trim().toLowerCase()
@@ -79,34 +92,50 @@ const loadSystems = async () => {
     systems.value = (await api.get('/systems')).data
   } catch {
     message.error('加载系统列表失败')
+  }
+  try {
+    activeUsers.value = (await api.get('/users/active')).data
+  } catch {
+    message.warning('启用账号列表加载失败，暂时无法编辑负责人和协助人')
   } finally {
     loading.value = false
   }
 }
 
 const showCreateSystem = () => {
-  Object.assign(systemForm, { id: 0, name: '', ownerName: '', collaborators: '', recordVersion: 0 })
+  Object.assign(systemForm, { id: 0, name: '', ownerUserId: undefined, collaboratorUserIds: [], recordVersion: 0 })
   systemFormMode.value = 'create'
 }
 
 const showEditSystem = (system: SystemItem) => {
-  Object.assign(systemForm, { id: system.id, name: system.name, ownerName: system.ownerName, collaborators: system.collaborators.join(', '), recordVersion: system.recordVersion })
+  Object.assign(systemForm, {
+    id: system.id,
+    name: system.name,
+    ownerUserId: system.ownerUserId ?? undefined,
+    collaboratorUserIds: [...(system.collaboratorUserIds ?? [])],
+    recordVersion: system.recordVersion,
+  })
   systemFormMode.value = 'edit'
 }
 
-const collaboratorList = () => systemForm.collaborators.split(',').map((item) => item.trim()).filter(Boolean)
-
 const saveSystem = async () => {
-  const collaborators = collaboratorList()
-  if (!systemForm.name.trim() || !systemForm.ownerName.trim()) {
-    message.warning('请填写系统名称和负责人')
+  if (!systemForm.name.trim() || systemForm.ownerUserId === undefined) {
+    message.warning('请选择系统名称和负责人账号')
     return
   }
-  if (new Set(collaborators).size !== collaborators.length) {
-    message.warning('同一系统的协助人不能重复')
+  if (new Set(systemForm.collaboratorUserIds).size !== systemForm.collaboratorUserIds.length) {
+    message.warning('同一系统的协助账号不能重复')
     return
   }
-  const body = { name: systemForm.name.trim(), ownerName: systemForm.ownerName.trim(), collaborators }
+  if (systemForm.collaboratorUserIds.includes(systemForm.ownerUserId)) {
+    message.warning('负责人不能同时作为协助人')
+    return
+  }
+  const body = {
+    name: systemForm.name.trim(),
+    ownerUserId: systemForm.ownerUserId,
+    collaboratorUserIds: systemForm.collaboratorUserIds,
+  }
   try {
     if (systemFormMode.value === 'create') {
       await api.post('/systems', body)
@@ -218,8 +247,27 @@ usePageRefresh('systems', loadSystems)
       <Form data-test="system-modal" layout="vertical" @submit.prevent="saveSystem">
         <p class="field-requirement-legend" data-test="system-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
         <FormItem data-test="system-name-field" label="系统名称" required><Input v-model:value="systemForm.name" data-test="system-name" /></FormItem>
-        <FormItem label="负责人" required><Input v-model:value="systemForm.ownerName" data-test="system-owner" /></FormItem>
-        <FormItem data-test="system-collaborators-field" label="协助人" extra="多人用逗号分隔"><Input v-model:value="systemForm.collaborators" data-test="system-collaborators" placeholder="多人用逗号分隔" /></FormItem>
+        <FormItem label="负责人账号" required>
+          <Select
+            v-model:value="systemForm.ownerUserId"
+            data-test="system-owner"
+            :options="activeUserOptions"
+            placeholder="请选择启用账号"
+            show-search
+            option-filter-prop="label"
+          />
+        </FormItem>
+        <FormItem data-test="system-collaborators-field" label="协助账号" extra="可从启用账号中多选">
+          <Select
+            v-model:value="systemForm.collaboratorUserIds"
+            data-test="system-collaborators"
+            mode="multiple"
+            :options="activeUserOptions"
+            placeholder="请选择协助账号"
+            show-search
+            option-filter-prop="label"
+          />
+        </FormItem>
         <Space class="form-actions"><Button html-type="button" @click="systemFormMode = null">取消</Button><Button type="primary" html-type="submit">保存</Button></Space>
       </Form>
     </Modal>

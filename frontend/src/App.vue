@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
-import { Button, ConfigProvider, Layout, LayoutContent, LayoutHeader, LayoutSider, Menu, MenuItem, Spin, message } from 'ant-design-vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
+import { Badge, Button, ConfigProvider, Layout, LayoutContent, LayoutHeader, LayoutSider, Menu, MenuItem, Spin, message } from 'ant-design-vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import { useRoute, useRouter } from 'vue-router'
 
 dayjs.locale('zh-cn')
-import { AppstoreOutlined, AuditOutlined, DashboardOutlined, DatabaseOutlined, FileTextOutlined, LogoutOutlined, RobotOutlined, SettingOutlined, TagsOutlined, TeamOutlined, UnorderedListOutlined } from '@ant-design/icons-vue'
+import { AppstoreOutlined, AuditOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined, FileTextOutlined, LogoutOutlined, RobotOutlined, SettingOutlined, TagsOutlined, TeamOutlined, UnorderedListOutlined } from '@ant-design/icons-vue'
 import { themeConfig } from './theme'
 import { onUnauthorized } from './api'
 import { useAuth } from './composables/useAuth'
 import { useCreateFormState } from './composables/useCreateFormState'
+import { useNotifications } from './composables/useNotifications'
 import LoginPage from './components/LoginPage.vue'
 import PageContainer from './components/PageContainer.vue'
 
@@ -27,7 +28,7 @@ interface PageDefinition {
 }
 
 const pages: PageDefinition[] = [
-  { key: 'dashboard', routeName: 'dashboard', label: '数据看板', description: '总览需求提交与处理状态。' },
+  { key: 'dashboard', routeName: 'dashboard', label: '待办工作台', description: '查看当前账号负责和协助处理的系统需求。' },
   { key: 'create', routeName: 'requirement-create', label: '填写需求', description: '填写、暂存或正式保存系统需求。' },
   { key: 'list', routeName: 'requirement-list', label: '需求列表', description: '查看、筛选、编辑和删除全部需求。' },
   { key: 'management', routeName: 'requirement-management', label: '管理需求', description: '跟进待处理需求和暂存草稿。' },
@@ -42,6 +43,7 @@ const router = useRouter()
 const route = useRoute()
 const { currentUser, initializing, isLoggedIn, isAdmin, logout, clearSession } = useAuth()
 const { createFormDirty, setCreateFormDirty } = useCreateFormState()
+const { unreadCount, refreshUnreadCount, clearUnreadCount } = useNotifications()
 
 const visiblePages = computed(() => pages.filter((page) => !page.adminOnly || isAdmin.value))
 const activePage = computed<PageKey>(() => {
@@ -61,7 +63,29 @@ const removeCreateFormGuard = router.beforeEach((to, from) => {
   return true
 })
 
-onBeforeUnmount(removeCreateFormGuard)
+let notificationRefreshTimer: ReturnType<typeof window.setInterval> | undefined
+
+const stopNotificationRefresh = () => {
+  if (notificationRefreshTimer !== undefined) {
+    window.clearInterval(notificationRefreshTimer)
+    notificationRefreshTimer = undefined
+  }
+}
+
+watch(isLoggedIn, (loggedIn) => {
+  stopNotificationRefresh()
+  if (!loggedIn) {
+    clearUnreadCount()
+    return
+  }
+  void refreshUnreadCount()
+  notificationRefreshTimer = window.setInterval(() => void refreshUnreadCount(), 60_000)
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  removeCreateFormGuard()
+  stopNotificationRefresh()
+})
 
 // 令牌失效时回到登录页，同时把未保存标记清掉，避免离开确认框阻断安全跳转。
 onUnauthorized(() => {
@@ -84,6 +108,10 @@ const handleMenuClick = ({ key }: { key: string | number }) => {
   const page = visiblePages.value.find((item) => item.key === key)
   if (page) void router.push({ name: page.routeName })
 }
+
+const openNotificationCenter = () => {
+  void router.push({ name: 'notification-center' })
+}
 </script>
 
 <template>
@@ -103,6 +131,11 @@ const handleMenuClick = ({ key }: { key: string | number }) => {
         <div class="app-user-box">
           <span class="app-user-name" data-test="current-user">{{ currentUser?.displayName }}</span>
           <span class="app-user-role">{{ isAdmin ? '管理员' : '普通用户' }}</span>
+          <Button type="text" class="notification-bell" data-test="notification-bell" title="站内消息" aria-label="站内消息" @click="openNotificationCenter">
+            <Badge :count="unreadCount" :overflow-count="99" :show-zero="false">
+              <BellOutlined />
+            </Badge>
+          </Button>
           <Button type="text" data-test="logout" @click="handleLogout">
             <template #icon><LogoutOutlined /></template>
             退出

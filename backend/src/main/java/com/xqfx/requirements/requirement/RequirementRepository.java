@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import java.util.List;
+import java.util.Collection;
 import java.time.LocalDateTime;
 import com.xqfx.requirements.system.SystemEntity;
 public interface RequirementRepository extends JpaRepository<RequirementEntity, Long>, JpaSpecificationExecutor<RequirementEntity> {
@@ -20,6 +21,37 @@ public interface RequirementRepository extends JpaRepository<RequirementEntity, 
     java.util.Optional<RequirementEntity> findByIdAndDeletedFalse(Long id);
     long countByDeletedFalseAndSaveType(RequirementSaveType saveType);
     long countByDeletedFalseAndSaveTypeAndStatus(RequirementSaveType saveType, RequirementStatus status);
+
+    @Query("""
+            select requirement
+            from RequirementEntity requirement
+            join requirement.system system
+            where system.ownerUser.id = :userId
+              and requirement.deleted = false
+              and requirement.saveType = :saveType
+              and requirement.status not in :terminalStatuses
+            order by requirement.updatedAt desc
+            """)
+    List<RequirementEntity> findWorkbenchOwned(
+            @Param("userId") Long userId,
+            @Param("saveType") RequirementSaveType saveType,
+            @Param("terminalStatuses") Collection<RequirementStatus> terminalStatuses);
+
+    @Query("""
+            select distinct requirement
+            from RequirementEntity requirement
+            join requirement.system system
+            join system.collaboratorUsers collaborator
+            where collaborator.id = :userId
+              and requirement.deleted = false
+              and requirement.saveType = :saveType
+              and requirement.status not in :terminalStatuses
+            order by requirement.updatedAt desc
+            """)
+    List<RequirementEntity> findWorkbenchAssisting(
+            @Param("userId") Long userId,
+            @Param("saveType") RequirementSaveType saveType,
+            @Param("terminalStatuses") Collection<RequirementStatus> terminalStatuses);
 
     @Modifying
     @Query("""

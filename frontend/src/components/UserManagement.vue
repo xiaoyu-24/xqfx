@@ -203,7 +203,17 @@ const handleToggleDisabled = async (user: Pick<User, 'id' | 'disabled'>) => {
         </div>
         <div>
           <label style="display: block; margin-bottom: 4px; font-size: 14px">部门</label>
-          <Select v-model:value="form.departmentId" placeholder="请选择" allow-clear>
+          <Select
+            v-model:value="form.departmentId"
+            data-test="user-department-select"
+            class="user-department-select"
+            style="width: 100%"
+            :list-height="128"
+            :list-item-height="32"
+            popup-class-name="user-department-select-popup"
+            placeholder="请选择"
+            allow-clear
+          >
             <SelectOption v-for="department in departments" :key="department.id" :value="String(department.id)">
               {{ department.name }}
             </SelectOption>

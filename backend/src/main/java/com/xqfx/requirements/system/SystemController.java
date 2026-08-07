@@ -29,7 +29,7 @@ class SystemController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     SystemResponse create(@Valid @RequestBody CreateSystemRequest request) {
-        return service.create(request.name(), request.ownerName(), request.collaborators());
+        return service.create(request.name(), request.ownerUserId(), request.collaboratorUserIds());
     }
 
     @GetMapping
@@ -39,7 +39,7 @@ class SystemController {
 
     @PutMapping("/{id}")
     SystemResponse update(@PathVariable Long id, @Valid @RequestBody UpdateSystemRequest request) {
-        return service.update(id, request.name(), request.ownerName(), request.collaborators(), request.recordVersion());
+        return service.update(id, request.name(), request.ownerUserId(), request.collaboratorUserIds(), request.recordVersion());
     }
 
     @PatchMapping("/{id}/status")
@@ -60,22 +60,22 @@ class SystemController {
 
     record CreateSystemRequest(
             @NotBlank String name,
-            @NotBlank String ownerName,
-            List<String> collaborators
+            @jakarta.validation.constraints.NotNull Long ownerUserId,
+            List<Long> collaboratorUserIds
     ) {
         CreateSystemRequest {
-            collaborators = collaborators == null ? List.of() : List.copyOf(collaborators);
+            collaboratorUserIds = collaboratorUserIds == null ? List.of() : List.copyOf(collaboratorUserIds);
         }
     }
 
     record UpdateSystemRequest(
             @NotBlank String name,
-            @NotBlank String ownerName,
-            List<String> collaborators,
+            @jakarta.validation.constraints.NotNull Long ownerUserId,
+            List<Long> collaboratorUserIds,
             @jakarta.validation.constraints.NotNull Long recordVersion
     ) {
         UpdateSystemRequest {
-            collaborators = collaborators == null ? List.of() : List.copyOf(collaborators);
+            collaboratorUserIds = collaboratorUserIds == null ? List.of() : List.copyOf(collaboratorUserIds);
         }
     }
 

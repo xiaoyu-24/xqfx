@@ -4,10 +4,12 @@ import com.xqfx.requirements.dictionary.DictionaryCategory;
 import com.xqfx.requirements.dictionary.DictionaryItemEntity;
 import com.xqfx.requirements.dictionary.DictionaryService;
 import com.xqfx.requirements.system.SystemEntity;
-import com.xqfx.requirements.system.SystemProfile;
 import com.xqfx.requirements.system.SystemRepository;
+import com.xqfx.requirements.system.SystemService;
 import com.xqfx.requirements.system.SystemVersionEntity;
 import com.xqfx.requirements.system.SystemVersionRepository;
+import com.xqfx.requirements.user.UserEntity;
+import com.xqfx.requirements.user.UserRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -18,29 +20,42 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 class RequirementService {
 
     private final RequirementRepository requirements;
     private final SystemRepository systems;
+    private final SystemService systemService;
     private final SystemVersionRepository versions;
     private final DictionaryService dictionaries;
+    private final RequirementProgressRepository progresses;
+    private final UserRepository users;
+    private final RequirementNotificationService notifications;
 
-    RequirementService(RequirementRepository requirements, SystemRepository systems,
-                       SystemVersionRepository versions, DictionaryService dictionaries) {
+    RequirementService(RequirementRepository requirements, SystemRepository systems, SystemService systemService,
+                       SystemVersionRepository versions, DictionaryService dictionaries,
+                       RequirementProgressRepository progresses, UserRepository users,
+                       RequirementNotificationService notifications) {
         this.requirements = requirements;
         this.systems = systems;
+        this.systemService = systemService;
         this.versions = versions;
         this.dictionaries = dictionaries;
+        this.progresses = progresses;
+        this.users = users;
+        this.notifications = notifications;
     }
 
     @Transactional
-    RequirementResponse create(String requesterName, Long departmentId, String title, Long typeId, String content,
+    RequirementResponse create(UserEntity requester, String requesterName, Long departmentId, String title, Long typeId, String content,
                                Long systemId, Long targetVersionId, LocalDate start, LocalDate end,
-                               String newSystemName, String newSystemOwnerName,
-                               List<String> newSystemCollaborators) {
-        var department = dictionaries.requireActive(departmentId, DictionaryCategory.DEPARTMENT, "部门");
+                               String newSystemName, Long newSystemOwnerUserId,
+                               List<Long> newSystemCollaboratorUserIds) {
+        var department = requester.department() == null
+                ? dictionaries.requireActive(departmentId, DictionaryCategory.DEPARTMENT, "部门")
+                : requester.department();
         var type = dictionaries.requireActive(typeId, DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
         if (systemId != null && newSystemName != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能同时选择已有系统和新系统");
@@ -48,7 +63,7 @@ class RequirementService {
 
         var system = newSystemName == null
                 ? (systemId == null ? null : findSystem(systemId))
-                : createNewSystem(newSystemName, newSystemOwnerName, newSystemCollaborators);
+                : createNewSystem(newSystemName, newSystemOwnerUserId, newSystemCollaboratorUserIds);
         if (system != null && !system.isActive()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统已停用，不能新建需求");
         }
@@ -59,21 +74,24 @@ class RequirementService {
         }
         assertVersionBelongsToSystem(version, system);
 
-        var saved = requirements.save(new RequirementEntity(requesterName, department, title, type, content,
+        var saved = requirements.save(new RequirementEntity(requester, normalizeRequesterName(requesterName, requester), department, title, type, content,
                 system, version, RequirementPeriod.of(start, end)));
+        notifications.onRequirementSubmitted(saved, requester);
         return RequirementResponse.from(saved);
     }
 
     @Transactional
-    RequirementResponse createDraft(String requesterName, Long departmentId, String title, Long typeId,
+    RequirementResponse createDraft(UserEntity requester, String requesterName, Long departmentId, String title, Long typeId,
                                     String content, Long systemId, Long targetVersionId,
                                     LocalDate start, LocalDate end) {
-        var department = resolveOptionalActive(departmentId, DictionaryCategory.DEPARTMENT, "部门");
+        var department = requester.department() == null
+                ? resolveOptionalActive(departmentId, DictionaryCategory.DEPARTMENT, "部门")
+                : requester.department();
         var type = resolveOptionalActive(typeId, DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
         var system = systemId == null ? null : findSystem(systemId);
         var version = targetVersionId == null ? null : findVersion(targetVersionId);
         assertVersionBelongsToSystem(version, system);
-        return RequirementResponse.from(requirements.save(RequirementEntity.draft(requesterName, department, title,
+        return RequirementResponse.from(requirements.save(RequirementEntity.draft(requester, normalizeRequesterName(requesterName, requester), department, title,
                 type, content, system, version, RequirementPeriod.of(start, end))));
     }
 
@@ -118,6 +136,31 @@ class RequirementService {
         return RequirementResponse.from(findActive(id));
     }
 
+    @Transactional(readOnly = true)
+    List<RequirementProgressResponse> progresses(Long id) {
+        findActive(id);
+        return progresses.findByRequirement_IdOrderByCreatedAtAscIdAsc(id).stream()
+                .map(RequirementProgressResponse::from)
+                .toList();
+    }
+
+    @Transactional
+    RequirementProgressResponse addProgress(Long id, UserEntity author, String content, RequirementStatus status, Long recordVersion) {
+        var requirement = findActive(id);
+        var statusChanged = status != null && status != requirement.status();
+        if (statusChanged) {
+            assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
+            requirement.updateStatusFromProgress(status);
+            requirements.flush();
+        }
+        var progress = progresses.save(new RequirementProgressEntity(
+                requirement, author.id(), author.displayName(), content.trim(), status));
+        if (statusChanged) {
+            notifications.onStatusChanged(requirement, progress, author);
+        }
+        return RequirementProgressResponse.from(progress);
+    }
+
     @Transactional
     RequirementResponse updateDraft(Long id, String requesterName, Long departmentId, String title, Long typeId,
                                     String content, Long systemId, Long targetVersionId,
@@ -141,10 +184,11 @@ class RequirementService {
     }
 
     @Transactional
-    RequirementResponse update(Long id, String requesterName, Long departmentId, String title, Long typeId,
+    RequirementResponse update(Long id, UserEntity actor, String requesterName, Long departmentId, String title, Long typeId,
                                String content, Long systemId, Long targetVersionId,
-                               LocalDate start, LocalDate end, RequirementStatus status, Long recordVersion) {
+                               LocalDate start, LocalDate end, Long recordVersion) {
         var requirement = findActive(id);
+        var submittingDraft = requirement.isDraft();
         assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
         var department = resolveForUpdate(departmentId, requirement.department(),
                 DictionaryCategory.DEPARTMENT, "部门");
@@ -162,33 +206,31 @@ class RequirementService {
         }
         assertVersionBelongsToSystem(version, system);
         requirement.update(requesterName, department, title, type, content, system, version,
-                RequirementPeriod.of(start, end), status);
-        requirements.flush();
-        return RequirementResponse.from(requirement);
-    }
-
-    @Transactional
-    RequirementResponse updateStatus(Long id, RequirementStatus status, Long recordVersion) {
-        var requirement = findActive(id);
-        assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
-        requirement.updateStatus(status);
-        requirements.flush();
-        return RequirementResponse.from(requirement);
-    }
-
-    @Transactional
-    RequirementResponse updateProcessing(Long id, RequirementStatus status, LocalDateTime completedAt,
-                                         String handledBy, String completionDescription, Long recordVersion) {
-        var requirement = findActive(id);
-        assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
-        if (status == RequirementStatus.COMPLETED || status == RequirementStatus.CLOSED
-                || status == RequirementStatus.REJECTED) {
-            if (completedAt == null) {
-                throw new IllegalArgumentException("终态需求必须填写完成时间");
-            }
+                RequirementPeriod.of(start, end));
+        if (submittingDraft) {
+            requirement.linkRequesterUserIfMissing(actor);
         }
-        requirement.updateProcessing(status, completedAt, handledBy, completionDescription);
         requirements.flush();
+        if (submittingDraft) {
+            notifications.onRequirementSubmitted(requirement, actor);
+        }
+        return RequirementResponse.from(requirement);
+    }
+
+    @Transactional
+    RequirementResponse assign(Long id, Long assigneeUserId, Long recordVersion, UserEntity actor) {
+        var requirement = findActive(id);
+        assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
+        var assignee = assigneeUserId == null ? null : findEnabledUser(assigneeUserId);
+        var currentAssignee = requirement.assignee();
+        if (Objects.equals(currentAssignee == null ? null : currentAssignee.id(), assignee == null ? null : assignee.id())) {
+            return RequirementResponse.from(requirement);
+        }
+        requirement.assign(assignee);
+        requirements.flush();
+        if (assignee != null) {
+            notifications.onAssigneeChanged(requirement, actor);
+        }
         return RequirementResponse.from(requirement);
     }
 
@@ -230,12 +272,20 @@ class RequirementService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "版本不存在"));
     }
 
-    private SystemEntity createNewSystem(String name, String ownerName, List<String> collaborators) {
-        var profile = SystemProfile.create(name, ownerName, collaborators == null ? List.of() : collaborators);
-        if (systems.existsByActiveNameKey(SystemEntity.normalizedName(profile.name()))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "系统名称已存在");
+    private UserEntity findEnabledUser(Long id) {
+        var user = users.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
+        if (user.isDisabled()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "用户已停用，不能指派");
         }
-        return systems.save(new SystemEntity(profile));
+        return user;
+    }
+
+    private SystemEntity createNewSystem(String name, Long ownerUserId, List<Long> collaboratorUserIds) {
+        return systemService.createBoundEntity(name, ownerUserId, collaboratorUserIds);
+    }
+
+    private static String normalizeRequesterName(String requesterName, UserEntity requester) {
+        return requesterName == null || requesterName.isBlank() ? requester.displayName() : requesterName.trim();
     }
 
     private static void assertVersionBelongsToSystem(SystemVersionEntity version, SystemEntity system) {

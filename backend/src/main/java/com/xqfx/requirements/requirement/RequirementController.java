@@ -3,11 +3,12 @@ package com.xqfx.requirements.requirement;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import com.xqfx.requirements.user.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,7 +18,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -35,17 +35,17 @@ class RequirementController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     RequirementResponse create(@Valid @RequestBody CreateRequirementRequest request) {
-        return service.create(request.requesterName(), request.departmentId(), request.title(), request.typeId(),
+        return service.create(CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
                 request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
                 request.periodEndDate(), request.newSystem() == null ? null : request.newSystem().name(),
-                request.newSystem() == null ? null : request.newSystem().ownerName(),
-                request.newSystem() == null ? null : request.newSystem().collaborators());
+                request.newSystem() == null ? null : request.newSystem().ownerUserId(),
+                request.newSystem() == null ? null : request.newSystem().collaboratorUserIds());
     }
 
     @PostMapping("/drafts")
     @ResponseStatus(HttpStatus.CREATED)
     RequirementResponse createDraft(@RequestBody DraftRequirementRequest request) {
-        return service.createDraft(request.requesterName(), request.departmentId(), request.title(), request.typeId(),
+        return service.createDraft(CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
                 request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
                 request.periodEndDate());
     }
@@ -93,6 +93,23 @@ class RequirementController {
         return attachments.list(id);
     }
 
+    @GetMapping("/{id}/progresses")
+    List<RequirementProgressResponse> progresses(@PathVariable Long id) {
+        return service.progresses(id);
+    }
+
+    @PostMapping("/{id}/progresses")
+    @ResponseStatus(HttpStatus.CREATED)
+    RequirementProgressResponse addProgress(@PathVariable Long id,
+                                            @Valid @RequestBody CreateProgressRequest request) {
+        return service.addProgress(id, CurrentUser.require(), request.content(), request.status(), request.recordVersion());
+    }
+
+    @PatchMapping("/{id}/assignee")
+    RequirementResponse assign(@PathVariable Long id, @Valid @RequestBody AssignRequirementRequest request) {
+        return service.assign(id, request.assigneeUserId(), request.recordVersion(), CurrentUser.require());
+    }
+
     @PutMapping("/{id}/draft")
     RequirementResponse updateDraft(@PathVariable Long id, @RequestBody DraftRequirementRequest request) {
         return service.updateDraft(id, request.requesterName(), request.departmentId(), request.title(), request.typeId(),
@@ -102,20 +119,9 @@ class RequirementController {
 
     @PutMapping("/{id}")
     RequirementResponse update(@PathVariable Long id, @Valid @RequestBody UpdateRequirementRequest request) {
-        return service.update(id, request.requesterName(), request.departmentId(), request.title(), request.typeId(),
+        return service.update(id, CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
                 request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
-                request.periodEndDate(), request.status(), request.recordVersion());
-    }
-
-    @PatchMapping("/{id}/status")
-    RequirementResponse updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
-        return service.updateStatus(id, request.status(), request.recordVersion());
-    }
-
-    @PatchMapping("/{id}/processing")
-    RequirementResponse updateProcessing(@PathVariable Long id, @Valid @RequestBody UpdateProcessingRequest request) {
-        return service.updateProcessing(id, request.status(), request.completedAt(), request.handledBy(),
-                request.completionDescription(), request.recordVersion());
+                request.periodEndDate(), request.recordVersion());
     }
 
     @DeleteMapping("/{id}")
@@ -131,17 +137,17 @@ class RequirementController {
         return attachments.upload(id, file);
     }
 
-    record UpdateStatusRequest(@NotNull RequirementStatus status, @NotNull Long recordVersion) {
+    record CreateProgressRequest(@NotBlank String content, RequirementStatus status,
+                                 @NotNull Long recordVersion) {
     }
 
-    record UpdateProcessingRequest(@NotNull RequirementStatus status, LocalDateTime completedAt,
-                                   String handledBy, String completionDescription, @NotNull Long recordVersion) {
+    record AssignRequirementRequest(Long assigneeUserId, @NotNull Long recordVersion) {
     }
 
     record UpdateRequirementRequest(@NotBlank String requesterName, @NotNull Long departmentId,
                                     @NotBlank String title, @NotNull Long typeId, @NotBlank String content,
                                     Long systemId, Long targetVersionId, LocalDate periodStartDate,
-                                    LocalDate periodEndDate, RequirementStatus status, @NotNull Long recordVersion) {
+                                    LocalDate periodEndDate, @NotNull Long recordVersion) {
     }
 
     record CreateRequirementRequest(@NotBlank String requesterName, @NotNull Long departmentId,
@@ -155,9 +161,9 @@ class RequirementController {
                                    LocalDate periodEndDate, Long recordVersion) {
     }
 
-    record NewSystemRequest(String name, String ownerName, List<String> collaborators) {
+    record NewSystemRequest(String name, Long ownerUserId, List<Long> collaboratorUserIds) {
         NewSystemRequest {
-            collaborators = collaborators == null ? List.of() : List.copyOf(collaborators);
+            collaboratorUserIds = collaboratorUserIds == null ? List.of() : List.copyOf(collaboratorUserIds);
         }
     }
 }

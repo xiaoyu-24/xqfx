@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 record RequirementResponse(
         Long id,
         String requesterName,
+        Long requesterUserId,
         Long departmentId,
         String department,
         String title,
@@ -26,14 +27,19 @@ record RequirementResponse(
         LocalDateTime completedAt,
         String handledBy,
         String completionDescription,
+        Long assigneeId,
+        String assigneeName,
         long recordVersion) {
 
     static RequirementResponse from(RequirementEntity requirement) {
         var department = requirement.department();
         var type = requirement.type();
+        var requesterUser = requirement.requesterUser();
+        var assignee = requirement.assignee();
         return new RequirementResponse(
                 requirement.id(),
                 requirement.requesterName(),
+                requesterUser == null ? null : requesterUser.id(),
                 department == null ? null : department.id(),
                 department == null ? null : department.name(),
                 requirement.title(),
@@ -54,6 +60,8 @@ record RequirementResponse(
                 requirement.completedAt(),
                 requirement.handledBy(),
                 requirement.completionDescription(),
+                assignee == null ? null : assignee.id(),
+                assignee == null ? null : assignee.displayName(),
                 requirement.recordVersion());
     }
 }
