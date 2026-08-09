@@ -11,7 +11,6 @@ import com.xqfx.requirements.system.SystemVersionRepository;
 import com.xqfx.requirements.user.UserEntity;
 import com.xqfx.requirements.user.UserRepository;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +50,7 @@ class RequirementService {
     @Transactional
     RequirementResponse create(UserEntity requester, String requesterName, Long departmentId, String title, Long typeId, String content,
                                Long systemId, Long targetVersionId, LocalDate start, LocalDate end,
+                               RequirementUrgency urgency,
                                String newSystemName, Long newSystemOwnerUserId,
                                List<Long> newSystemCollaboratorUserIds) {
         var department = requester.department() == null
@@ -75,7 +75,7 @@ class RequirementService {
         assertVersionBelongsToSystem(version, system);
 
         var saved = requirements.save(new RequirementEntity(requester, normalizeRequesterName(requesterName, requester), department, title, type, content,
-                system, version, RequirementPeriod.of(start, end)));
+                system, version, RequirementPeriod.of(start, end), urgency));
         notifications.onRequirementSubmitted(saved, requester);
         return RequirementResponse.from(saved);
     }
@@ -83,7 +83,7 @@ class RequirementService {
     @Transactional
     RequirementResponse createDraft(UserEntity requester, String requesterName, Long departmentId, String title, Long typeId,
                                     String content, Long systemId, Long targetVersionId,
-                                    LocalDate start, LocalDate end) {
+                                    LocalDate start, LocalDate end, RequirementUrgency urgency) {
         var department = requester.department() == null
                 ? resolveOptionalActive(departmentId, DictionaryCategory.DEPARTMENT, "部门")
                 : requester.department();
@@ -92,7 +92,7 @@ class RequirementService {
         var version = targetVersionId == null ? null : findVersion(targetVersionId);
         assertVersionBelongsToSystem(version, system);
         return RequirementResponse.from(requirements.save(RequirementEntity.draft(requester, normalizeRequesterName(requesterName, requester), department, title,
-                type, content, system, version, RequirementPeriod.of(start, end))));
+                type, content, system, version, RequirementPeriod.of(start, end), urgency)));
     }
 
     @Transactional(readOnly = true)
@@ -110,25 +110,13 @@ class RequirementService {
     @Transactional(readOnly = true)
     RequirementPageResponse page(int page, int size, Long systemId, boolean unassignedSystem,
                                  Long targetVersionId, Long departmentId, String requesterName, Long typeId,
-                                 RequirementStatus status, RequirementSaveType saveType, String keyword,
-                                 LocalDate submittedFrom, LocalDate submittedTo,
-                                 LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
-        validatePageFilter(page, size, systemId, unassignedSystem, submittedFrom, submittedTo,
-                periodOverlapStart, periodOverlapEnd);
+                                 RequirementStatus status, RequirementSaveType saveType, boolean unfinishedOnly, String keyword,
+                                 String sortBy, String sortDirection) {
+        validatePageFilter(page, size, systemId, unassignedSystem);
         return RequirementPageResponse.from(requirements.findAll(
                 RequirementSpecifications.filtered(systemId, unassignedSystem, targetVersionId, departmentId,
-                        requesterName, typeId, status, saveType, keyword, submittedFrom, submittedTo,
-                        periodOverlapStart, periodOverlapEnd),
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))));
-    }
-
-    @Transactional(readOnly = true)
-    RequirementPageResponse managementPage(int page, int size) {
-        if (page < 0 || size < 1 || size > 100) {
-            throw new IllegalArgumentException("分页参数无效");
-        }
-        return RequirementPageResponse.from(requirements.findAll(RequirementSpecifications.management(),
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"))));
+                        requesterName, typeId, status, saveType, keyword, unfinishedOnly, sortBy, sortDirection),
+                PageRequest.of(page, size)));
     }
 
     @Transactional(readOnly = true)
@@ -164,7 +152,7 @@ class RequirementService {
     @Transactional
     RequirementResponse updateDraft(Long id, String requesterName, Long departmentId, String title, Long typeId,
                                     String content, Long systemId, Long targetVersionId,
-                                    LocalDate start, LocalDate end, Long recordVersion) {
+                                    LocalDate start, LocalDate end, RequirementUrgency urgency, Long recordVersion) {
         var requirement = findActive(id);
         assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
         if (!requirement.isDraft()) {
@@ -178,7 +166,7 @@ class RequirementService {
         var version = targetVersionId == null ? null : findVersion(targetVersionId);
         assertVersionBelongsToSystem(version, system);
         requirement.updateDraft(requesterName, department, title, type, content, system, version,
-                RequirementPeriod.of(start, end));
+                RequirementPeriod.of(start, end), urgency);
         requirements.flush();
         return RequirementResponse.from(requirement);
     }
@@ -186,7 +174,7 @@ class RequirementService {
     @Transactional
     RequirementResponse update(Long id, UserEntity actor, String requesterName, Long departmentId, String title, Long typeId,
                                String content, Long systemId, Long targetVersionId,
-                               LocalDate start, LocalDate end, Long recordVersion) {
+                               LocalDate start, LocalDate end, RequirementUrgency urgency, Long recordVersion) {
         var requirement = findActive(id);
         var submittingDraft = requirement.isDraft();
         assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
@@ -206,7 +194,7 @@ class RequirementService {
         }
         assertVersionBelongsToSystem(version, system);
         requirement.update(requesterName, department, title, type, content, system, version,
-                RequirementPeriod.of(start, end));
+                RequirementPeriod.of(start, end), urgency);
         if (submittingDraft) {
             requirement.linkRequesterUserIfMissing(actor);
         }
@@ -294,23 +282,12 @@ class RequirementService {
         }
     }
 
-    private static void validatePageFilter(int page, int size, Long systemId, boolean unassignedSystem,
-                                           LocalDate submittedFrom, LocalDate submittedTo,
-                                           LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
+    private static void validatePageFilter(int page, int size, Long systemId, boolean unassignedSystem) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("分页参数无效");
         }
         if (systemId != null && unassignedSystem) {
             throw new IllegalArgumentException("不能同时筛选具体系统和暂无系统");
-        }
-        if (submittedFrom != null && submittedTo != null && submittedTo.isBefore(submittedFrom)) {
-            throw new IllegalArgumentException("填写结束日期不能早于开始日期");
-        }
-        if ((periodOverlapStart == null) != (periodOverlapEnd == null)) {
-            throw new IllegalArgumentException("周期筛选开始和结束日期必须同时填写");
-        }
-        if (periodOverlapStart != null && periodOverlapEnd.isBefore(periodOverlapStart)) {
-            throw new IllegalArgumentException("周期筛选结束日期不能早于开始日期");
         }
     }
 

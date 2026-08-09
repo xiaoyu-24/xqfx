@@ -1,5 +1,17 @@
 import { message } from 'ant-design-vue'
 
+export type ApiFieldErrors = Record<string, string>
+
+export const apiErrorDetails = (error: unknown) => {
+  const response = (error as { response?: { status?: number; data?: { message?: string; fieldErrors?: ApiFieldErrors } } })?.response
+  const data = response?.data
+  return {
+    status: response?.status,
+    message: data?.message?.trim() || '',
+    fieldErrors: data?.fieldErrors ?? {},
+  }
+}
+
 /**
  * 统一 axios 错误处理 composable。
  *
@@ -15,15 +27,15 @@ import { message } from 'ant-design-vue'
  */
 export const useApiError = () => {
   const handleError = (error: unknown, fallback = '操作失败，请重试') => {
-    const status = (error as { response?: { status?: number } })?.response?.status
+    const { status, message: serverMessage } = apiErrorDetails(error)
     if (status === 409) {
-      message.error('数据已被其他人修改，请刷新后重试')
+      message.error(serverMessage || '数据已被其他人修改，请刷新后重试')
     } else if (status === 404) {
-      message.error('数据不存在或已被删除')
+      message.error(serverMessage || '数据不存在或已被删除')
     } else if (status && status >= 500) {
-      message.error('服务异常，请稍后重试')
+      message.error(serverMessage || '服务异常，请稍后重试')
     } else {
-      message.error(fallback)
+      message.error(serverMessage || fallback)
     }
   }
 

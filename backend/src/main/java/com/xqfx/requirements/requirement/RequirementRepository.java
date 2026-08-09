@@ -21,6 +21,7 @@ public interface RequirementRepository extends JpaRepository<RequirementEntity, 
     java.util.Optional<RequirementEntity> findByIdAndDeletedFalse(Long id);
     long countByDeletedFalseAndSaveType(RequirementSaveType saveType);
     long countByDeletedFalseAndSaveTypeAndStatus(RequirementSaveType saveType, RequirementStatus status);
+    long countByDeletedFalseAndSaveTypeAndUrgency(RequirementSaveType saveType, RequirementUrgency urgency);
 
     @Query("""
             select requirement

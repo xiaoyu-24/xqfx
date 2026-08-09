@@ -1,4 +1,4 @@
-export type RefreshTarget = 'requirements' | 'management' | 'systems' | 'versions' | 'dashboard'
+export type RefreshTarget = 'requirements' | 'systems' | 'versions' | 'dashboard'
 
 type Listener = () => void
 

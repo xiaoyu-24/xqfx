@@ -31,10 +31,16 @@ class DashboardController {
             statusCounts.put(status.name(), repository.countByDeletedFalseAndSaveTypeAndStatus(RequirementSaveType.SUBMITTED, status));
         }
 
+        Map<String, Long> urgencyCounts = new LinkedHashMap<>();
+        for (RequirementUrgency urgency : RequirementUrgency.values()) {
+            urgencyCounts.put(urgency.name(), repository.countByDeletedFalseAndSaveTypeAndUrgency(RequirementSaveType.SUBMITTED, urgency));
+        }
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("total", total);
         result.put("draftCount", draftCount);
         result.put("statusCounts", statusCounts);
+        result.put("urgencyCounts", urgencyCounts);
         return result;
     }
 

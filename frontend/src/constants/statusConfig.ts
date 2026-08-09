@@ -1,7 +1,7 @@
 /**
  * 状态/类型/枚举的集中配置：标签文案 + Tag 颜色 + Select options 派生。
  *
- * 用途：消除三处分散硬编码（RequirementList / RequirementManagement / System & VersionManagement），
+ * 用途：集中维护需求列表、系统和版本页面共用的状态文案。
  * 统一 Tag 颜色规范，便于后续调整。
  *
  * 使用方式：

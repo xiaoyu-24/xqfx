@@ -5,11 +5,13 @@ import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { subscribeToRefresh } from '../composables/refreshBus'
 import { requirementStatusMeta } from '../constants/statusConfig'
+import { urgencyMeta } from '../constants/urgencyConfig'
 
 interface DashboardSummary {
   total: number
   draftCount: number
   statusCounts: Record<string, number>
+  urgencyCounts: Record<string, number>
 }
 
 interface WorkbenchItem {
@@ -28,10 +30,12 @@ interface WorkbenchData {
 
 const router = useRouter()
 const loading = ref(false)
-const summary = ref<DashboardSummary>({ total: 0, draftCount: 0, statusCounts: {} })
+const summary = ref<DashboardSummary>({ total: 0, draftCount: 0, statusCounts: {}, urgencyCounts: {} })
 const workbench = ref<WorkbenchData>({ owned: [], assisting: [] })
 const statusEntries = computed(() => Object.entries(summary.value.statusCounts)
   .map(([key, count]) => ({ key, count })))
+const urgencyEntries = computed(() => ['HIGH', 'MEDIUM', 'LOW']
+  .map((key) => ({ key, count: summary.value.urgencyCounts[key] ?? 0 })))
 
 const loadDashboard = async () => {
   loading.value = true
@@ -124,6 +128,13 @@ const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('zh-CN', {
           </Statistic>
         </Card>
       </Col>
+      <Col v-for="entry in urgencyEntries" :key="`urgency-${entry.key}`" :xs="12" :sm="8" :md="6">
+        <Card class="stat-card urgency-stat-card" :loading="loading">
+          <Statistic :value="entry.count">
+            <template #title><Tag :color="urgencyMeta(entry.key).color">紧急程度：{{ urgencyMeta(entry.key).label }}</Tag></template>
+          </Statistic>
+        </Card>
+      </Col>
     </Row>
   </section>
 </template>
@@ -212,6 +223,10 @@ const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('zh-CN', {
 
 .stat-card:hover {
   box-shadow: 0 4px 16px rgb(15 23 42 / 12%);
+}
+
+.urgency-stat-card {
+  cursor: default;
 }
 
 @media (max-width: 900px) {

@@ -5,6 +5,7 @@ import { api } from '../api'
 import { entityStatusMeta } from '../constants/statusConfig'
 import { markChanged } from '../composables/refreshBus'
 import { usePageRefresh } from '../composables/usePageRefresh'
+import { useFormErrors } from '../composables/useFormErrors'
 
 type SystemStatus = 'ACTIVE' | 'INACTIVE'
 type SystemItem = { id: number; name: string; status: SystemStatus }
@@ -16,6 +17,7 @@ const selectedSystemId = ref<number | undefined>(undefined)
 const versionFormMode = ref<'create' | 'edit' | null>(null)
 const versionForm = reactive({ id: 0, name: '' })
 const loading = ref(false)
+const { errors, clearErrors, setError, applyServerErrors } = useFormErrors()
 const versionColumns = [
   { title: '版本名称', dataIndex: 'name', key: 'name', minWidth: 220 },
   { title: '状态', key: 'status', width: 120 },
@@ -65,31 +67,36 @@ const onSystemChange = (value: unknown) => {
 const showCreateVersion = () => {
   Object.assign(versionForm, { id: 0, name: '' })
   versionFormMode.value = 'create'
+  clearErrors()
 }
 
 const showEditVersion = (version: VersionItem) => {
   Object.assign(versionForm, { id: version.id, name: version.name })
   versionFormMode.value = 'edit'
+  clearErrors()
 }
 
 const saveVersion = async () => {
-  if (selectedSystemId.value === undefined || !versionForm.name.trim()) {
-    message.warning('请填写版本名称')
-    return
-  }
+  clearErrors()
+  if (selectedSystemId.value === undefined) setError('systemId', '请选择系统')
+  if (!versionForm.name.trim()) setError('name', '请输入版本名称')
+  if (Object.keys(errors).length > 0) { message.warning('请先补充标记的必填项'); return }
+  const systemId = selectedSystemId.value
+  if (systemId === undefined) return
   try {
     if (versionFormMode.value === 'create') {
-      await api.post(`/systems/${selectedSystemId.value}/versions`, { name: versionForm.name.trim() })
+      await api.post(`/systems/${systemId}/versions`, { name: versionForm.name.trim() })
       message.success('新增版本成功')
     } else {
       await api.put(`/system-versions/${versionForm.id}`, { name: versionForm.name.trim() })
       message.success('版本名称已更新')
     }
     versionFormMode.value = null
-    await loadVersions(selectedSystemId.value)
+    await loadVersions(systemId)
     markChanged(['requirements', 'dashboard'])
-  } catch {
-    message.error('保存版本失败')
+  } catch (error: unknown) {
+    const details = applyServerErrors(error)
+    message.error(details.message || '保存版本失败，请稍后重试')
   }
 }
 
@@ -163,7 +170,7 @@ usePageRefresh('versions', async () => {
 
     <Modal v-model:open="versionFormOpen" :title="versionFormMode === 'create' ? '新增版本' : '编辑版本'" :footer="null" destroy-on-close :get-container="false" @cancel="versionFormMode = null">
       <Form data-test="version-modal" layout="vertical" @submit.prevent="saveVersion">
-        <FormItem label="版本名称" required><Input v-model:value="versionForm.name" data-test="version-name" placeholder="请输入版本名称" /></FormItem>
+        <FormItem label="版本名称" required :validate-status="errors.name ? 'error' : undefined" :help="errors.name"><Input v-model:value="versionForm.name" data-test="version-name" placeholder="请输入版本名称" /></FormItem>
         <Space class="form-actions"><Button html-type="button" @click="versionFormMode = null">取消</Button><Button type="primary" html-type="submit">保存</Button></Space>
       </Form>
     </Modal>

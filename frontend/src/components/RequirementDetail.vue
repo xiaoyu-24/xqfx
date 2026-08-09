@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Button, Card, Descriptions, DescriptionsItem, Form, FormItem, Input, Modal, Result, Select, Space, Spin, Tag, Timeline, TimelineItem, message } from 'ant-design-vue'
+import { Button, Card, Form, FormItem, Input, Modal, Result, Select, Space, Spin, Tag, Timeline, TimelineItem, message } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { requirementStatusMeta, requirementStatusOptions, saveTypeMeta } from '../constants/statusConfig'
+import { urgencyMeta } from '../constants/urgencyConfig'
 import { markChanged } from '../composables/refreshBus'
 import { useApiError } from '../composables/useApiError'
+import { apiErrorDetails } from '../composables/useApiError'
 import RequirementEditor from './RequirementEditor.vue'
 
-type SystemItem = { id: number; name: string }
-type UserItem = { id: number; displayName: string }
+type SystemItem = { id: number; name: string; ownerName?: string | null }
 type Attachment = {
   id: number
   originalName: string
@@ -24,6 +25,7 @@ type Requirement = {
   id: number
   title: string | null
   type: string | null
+  urgency?: string | null
   requesterName: string | null
   requesterUserId?: number | null
   department: string | null
@@ -36,10 +38,7 @@ type Requirement = {
   periodStartDate: string | null
   periodEndDate: string | null
   completedAt?: string | null
-  handledBy?: string | null
   completionDescription?: string | null
-  assigneeId?: number | null
-  assigneeName?: string | null
   content?: string | null
   saveType?: string
   recordVersion: number
@@ -57,7 +56,6 @@ const route = useRoute()
 const router = useRouter()
 const requirement = ref<Requirement | null>(null)
 const systems = ref<SystemItem[]>([])
-const users = ref<UserItem[]>([])
 const attachments = ref<Attachment[]>([])
 const progresses = ref<Progress[]>([])
 const previewAttachment = ref<Attachment | null>(null)
@@ -67,9 +65,7 @@ const editing = ref(false)
 const progressModalOpen = ref(false)
 const progressLoading = ref(false)
 const progressForm = ref({ content: '', status: '' })
-const assigneeModalOpen = ref(false)
-const assigneeLoading = ref(false)
-const assigneeUserId = ref<number | undefined>()
+const progressError = ref('')
 const { handleError } = useApiError()
 let previewRefreshTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -81,6 +77,10 @@ const previewOpen = computed({
 const systemName = computed(() => {
   if (!requirement.value || requirement.value.systemId === null) return '暂无系统'
   return systems.value.find((system) => system.id === requirement.value?.systemId)?.name ?? `系统 #${requirement.value.systemId}`
+})
+const systemOwnerName = computed(() => {
+  if (!requirement.value || requirement.value.systemId === null) return '未设置'
+  return systems.value.find((system) => system.id === requirement.value?.systemId)?.ownerName || '未设置'
 })
 const formatShanghai = (value: string | null | undefined) => {
   if (!value) return '—'
@@ -131,18 +131,16 @@ const loadRequirement = async () => {
   loadError.value = ''
   clearPreviewRefresh()
   try {
-    const [detail, attachmentList, systemList, progressList, activeUsers] = await Promise.all([
+    const [detail, attachmentList, systemList, progressList] = await Promise.all([
       api.get(`/requirements/${requirementId.value}`),
       api.get(`/requirements/${requirementId.value}/attachments`),
       api.get('/systems'),
       api.get(`/requirements/${requirementId.value}/progresses`),
-      api.get('/users/active'),
     ])
     requirement.value = detail.data
     attachments.value = Array.isArray(attachmentList.data) ? attachmentList.data : []
     systems.value = Array.isArray(systemList.data) ? systemList.data : []
     progresses.value = Array.isArray(progressList.data) ? progressList.data : []
-    users.value = Array.isArray(activeUsers.data) ? activeUsers.data : []
     schedulePreviewRefresh()
   } catch (error: unknown) {
     requirement.value = null
@@ -183,10 +181,6 @@ const setEditQuery = (enabled: boolean) => {
   else delete query.edit
   void router.replace({ name: 'requirement-detail', params: { id: requirementId.value }, query })
 }
-const editRequirement = () => {
-  editing.value = true
-  setEditQuery(true)
-}
 const finishEditing = () => {
   editing.value = false
   setEditQuery(false)
@@ -199,13 +193,15 @@ const cancelEditing = () => {
 }
 const openProgressUpdate = () => {
   progressForm.value = { content: '', status: '' }
+  progressError.value = ''
   progressModalOpen.value = true
 }
 const saveProgressUpdate = async () => {
   if (!requirement.value) return
   const content = progressForm.value.content.trim()
+  progressError.value = ''
   if (!content) {
-    message.warning('请输入进展内容')
+    progressError.value = '请输入进展内容'
     return
   }
 
@@ -218,36 +214,13 @@ const saveProgressUpdate = async () => {
     })
     progressModalOpen.value = false
     message.success('进展已更新')
-    markChanged(['requirements', 'management', 'dashboard'])
+    markChanged(['requirements', 'dashboard'])
     await loadRequirement()
   } catch (error: unknown) {
+    progressError.value = apiErrorDetails(error).fieldErrors.content || ''
     handleError(error, '更新进度失败，请稍后重试')
   } finally {
     progressLoading.value = false
-  }
-}
-
-const openAssigneeModal = () => {
-  assigneeUserId.value = requirement.value?.assigneeId ?? undefined
-  assigneeModalOpen.value = true
-}
-
-const saveAssignee = async () => {
-  if (!requirement.value) return
-  assigneeLoading.value = true
-  try {
-    await api.patch(`/requirements/${requirement.value.id}/assignee`, {
-      assigneeUserId: assigneeUserId.value ?? null,
-      recordVersion: requirement.value.recordVersion,
-    })
-    assigneeModalOpen.value = false
-    message.success(assigneeUserId.value == null ? '已取消指派处理人' : '已指派处理人')
-    markChanged(['requirements', 'management', 'dashboard'])
-    await loadRequirement()
-  } catch (error: unknown) {
-    handleError(error, '指派处理人失败，请稍后重试')
-  } finally {
-    assigneeLoading.value = false
   }
 }
 
@@ -270,48 +243,49 @@ onBeforeUnmount(clearPreviewRefresh)
       </Result>
 
       <Card v-else-if="requirement" :bordered="false" class="requirement-detail-card">
-        <template #title>
-          <div class="detail-heading">
-            <span class="detail-title">{{ editing ? '编辑需求' : requirement.title || '未命名草稿' }}</span>
-            <Space wrap>
-              <Button @click="returnToList">返回列表</Button>
-              <Button v-if="editing" @click="cancelEditing">取消编辑</Button>
-              <Button v-else type="primary" data-test="edit-from-detail" @click="editRequirement">编辑需求</Button>
-            </Space>
-          </div>
-        </template>
-
         <RequirementEditor v-if="editing" :key="requirement.id" :requirement-id="requirement.id" @cancel="cancelEditing" @saved="finishEditing" />
 
         <template v-else>
-          <section class="detail-core-fields" data-test="detail-core-fields">
-            <div class="detail-type-field">
-              <span class="detail-field-label">类型</span>
-              <Tag>{{ requirement.type || '—' }}</Tag>
+          <section class="detail-hero" data-test="detail-core-fields">
+            <span class="detail-hero-label">需求标题</span>
+            <div class="detail-hero-title-row">
+              <strong class="detail-requirement-title">{{ requirement.title || '未命名草稿' }}</strong>
+              <Tag color="blue">{{ requirement.type || '—' }}</Tag>
+              <Tag :color="statusColor">{{ statusLabel }}</Tag>
+              <Tag :color="urgencyMeta(requirement.urgency).color">{{ urgencyMeta(requirement.urgency).label }}</Tag>
             </div>
-            <div class="detail-content-field">
-              <h2>需求</h2>
-              <p class="detail-content">{{ requirement.content || '—' }}</p>
+            <div class="detail-hero-meta">
+              <span>所属系统 <strong>{{ systemName }}</strong></span>
+              <span>负责人 <strong>{{ systemOwnerName }}</strong></span>
+              <span>目标版本 <strong>{{ requirement.targetVersionId === null ? '—' : requirement.targetVersionName ?? `版本 #${requirement.targetVersionId}` }}</strong></span>
+              <span>填写人 / 部门 <strong>{{ requirement.requesterName || '—' }} / {{ requirement.department || '—' }}</strong></span>
+              <span>填写时间 <strong>{{ formatShanghai(requirement.submittedAt || requirement.updatedAt) }}</strong></span>
             </div>
           </section>
 
-          <Descriptions bordered size="small" :column="2">
-            <DescriptionsItem label="状态"><Tag :color="statusColor">{{ statusLabel }}</Tag></DescriptionsItem>
-            <DescriptionsItem label="所属系统">{{ systemName }}</DescriptionsItem>
-            <DescriptionsItem label="目标版本">{{ requirement.targetVersionId === null ? '—' : requirement.targetVersionName ?? `版本 #${requirement.targetVersionId}` }}</DescriptionsItem>
-            <DescriptionsItem label="填写人 / 部门">{{ requirement.requesterName || '—' }} / {{ requirement.department || '—' }}</DescriptionsItem>
-            <DescriptionsItem label="填写时间">{{ formatShanghai(requirement.submittedAt || requirement.updatedAt) }}</DescriptionsItem>
-            <DescriptionsItem label="需求周期">{{ periodText }}</DescriptionsItem>
-            <DescriptionsItem label="最后修改">{{ formatShanghai(requirement.updatedAt) }}</DescriptionsItem>
-            <DescriptionsItem v-if="requirement.saveType === 'SUBMITTED'" label="当前处理人">
-              <Space wrap>
-                <span>{{ requirement.assigneeName || '未指派' }}</span>
-                <Button type="link" size="small" data-test="assign-requirement" @click="openAssigneeModal">指派</Button>
-              </Space>
-            </DescriptionsItem>
-            <DescriptionsItem v-if="requirement.completedAt" label="完成时间">{{ formatShanghai(requirement.completedAt) }}</DescriptionsItem>
-            <DescriptionsItem v-if="requirement.handledBy" label="处理人">{{ requirement.handledBy }}</DescriptionsItem>
-          </Descriptions>
+          <section class="detail-info">
+            <div class="detail-info-grid">
+              <div class="detail-info-item">
+                <span class="detail-field-label">需求周期</span>
+                <span>{{ periodText }}</span>
+              </div>
+              <div class="detail-info-item">
+                <span class="detail-field-label">最后修改</span>
+                <span>{{ formatShanghai(requirement.updatedAt) }}</span>
+              </div>
+              <div v-if="requirement.completedAt" class="detail-info-item">
+                <span class="detail-field-label">完成时间</span>
+                <span>{{ formatShanghai(requirement.completedAt) }}</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="detail-section detail-content-section">
+            <h2>需求内容</h2>
+            <div class="detail-content-field">
+              <p class="detail-content">{{ requirement.content || '—' }}</p>
+            </div>
+          </section>
 
           <section class="detail-section" data-test="progress-timeline-section">
             <div class="detail-section-heading">
@@ -372,8 +346,8 @@ onBeforeUnmount(clearPreviewRefresh)
         <FormItem label="更新后状态（可选）">
           <Select v-model:value="progressForm.status" data-test="progress-status" allow-clear placeholder="不修改状态" :options="requirementStatusOptions" />
         </FormItem>
-        <FormItem label="进展内容" required>
-          <Input.TextArea v-model:value="progressForm.content" data-test="progress-content" :rows="6" required placeholder="请输入当前进展、处理结果或补充说明" />
+        <FormItem label="进展内容" required :validate-status="progressError ? 'error' : undefined" :help="progressError || undefined">
+          <Input.TextArea v-model:value="progressForm.content" data-test="progress-content" :rows="6" placeholder="请输入当前进展、处理结果或补充说明" />
         </FormItem>
         <div class="progress-form-actions">
           <Space>
@@ -384,13 +358,6 @@ onBeforeUnmount(clearPreviewRefresh)
       </Form>
     </Modal>
 
-    <Modal v-model:open="assigneeModalOpen" title="指派处理人" :confirm-loading="assigneeLoading" ok-text="保存" cancel-text="取消" @ok="saveAssignee">
-      <Form layout="vertical">
-        <FormItem label="当前处理人">
-          <Select v-model:value="assigneeUserId" data-test="assignee-select" allow-clear placeholder="暂不指派" :options="users.map((user) => ({ value: user.id, label: user.displayName }))" />
-        </FormItem>
-      </Form>
-    </Modal>
   </section>
 </template>
 
@@ -399,28 +366,82 @@ onBeforeUnmount(clearPreviewRefresh)
   min-width: 0;
 }
 
-.requirement-detail-card :deep(.ant-card-head-title) {
-  min-width: 0;
+.requirement-detail-card :deep(.ant-card-body) {
+  padding: 0;
 }
 
-.detail-heading {
+.detail-hero {
+  padding: 24px;
+  border-bottom: 1px solid #f0f0f0;
+  background: linear-gradient(180deg, #f7faff 0%, #fff 100%);
+}
+
+.detail-hero-label {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+
+.detail-hero-title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.detail-title {
-  overflow: hidden;
+.detail-requirement-title {
   color: rgba(0, 0, 0, 0.88);
-  font-size: 17px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.detail-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 14px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.detail-hero-meta strong {
+  color: rgba(0, 0, 0, 0.65);
+  font-weight: 500;
+}
+
+.detail-info {
+  padding: 0 24px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.detail-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid #f0f0f0;
+  border-left: 1px solid #f0f0f0;
+}
+
+.detail-info-item {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  align-items: center;
+  min-height: 48px;
+  padding: 9px 14px;
+  border-right: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f0f0f0;
+  color: rgba(0, 0, 0, 0.88);
+  word-break: break-word;
 }
 
 .detail-section {
-  margin-top: 24px;
+  padding: 24px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.detail-content-section {
+  border-top: 0;
 }
 
 .detail-section-heading {
@@ -430,33 +451,17 @@ onBeforeUnmount(clearPreviewRefresh)
   gap: 16px;
 }
 
-.detail-core-fields {
-  display: grid;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.detail-type-field {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 32px;
-}
-
 .detail-field-label {
-  color: rgba(0, 0, 0, 0.88);
-  font-weight: 600;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
 }
 
 .detail-content-field {
-  padding: 16px 18px;
+  min-height: 150px;
+  padding: 18px 20px;
   border: 1px solid #f0f0f0;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #fafafa;
-}
-
-.detail-content-field h2 {
-  margin-bottom: 10px;
 }
 
 .detail-section h2 {
@@ -503,13 +508,15 @@ onBeforeUnmount(clearPreviewRefresh)
 }
 
 @media (max-width: 640px) {
-  .detail-heading {
-    align-items: flex-start;
-    flex-direction: column;
+  .detail-info,
+  .detail-hero,
+  .detail-section {
+    padding-right: 16px;
+    padding-left: 16px;
   }
 
-  .detail-title {
-    max-width: 100%;
+  .detail-info-grid {
+    grid-template-columns: 1fr;
   }
 
   .detail-section-heading {

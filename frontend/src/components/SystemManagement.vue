@@ -6,6 +6,7 @@ import { api } from '../api'
 import { entityStatusMeta } from '../constants/statusConfig'
 import { markChanged } from '../composables/refreshBus'
 import { useApiError } from '../composables/useApiError'
+import { useFormErrors } from '../composables/useFormErrors'
 import { usePageRefresh } from '../composables/usePageRefresh'
 
 type SystemStatus = 'ACTIVE' | 'INACTIVE'
@@ -30,6 +31,7 @@ type ActiveUser = {
 
 const router = useRouter()
 const { handleError } = useApiError()
+const { errors, clearErrors, setError, applyServerErrors } = useFormErrors()
 
 const systems = ref<SystemItem[]>([])
 const activeUsers = ref<ActiveUser[]>([])
@@ -105,6 +107,7 @@ const loadSystems = async () => {
 const showCreateSystem = () => {
   Object.assign(systemForm, { id: 0, name: '', ownerUserId: undefined, collaboratorUserIds: [], recordVersion: 0 })
   systemFormMode.value = 'create'
+  clearErrors()
 }
 
 const showEditSystem = (system: SystemItem) => {
@@ -116,24 +119,27 @@ const showEditSystem = (system: SystemItem) => {
     recordVersion: system.recordVersion,
   })
   systemFormMode.value = 'edit'
+  clearErrors()
 }
 
 const saveSystem = async () => {
-  if (!systemForm.name.trim() || systemForm.ownerUserId === undefined) {
-    message.warning('请选择系统名称和负责人账号')
-    return
-  }
+  clearErrors()
+  if (!systemForm.name.trim()) setError('name', '请输入系统名称')
+  if (systemForm.ownerUserId === undefined) setError('ownerUserId', '请选择负责人账号')
+  if (Object.keys(errors).length > 0) { message.warning('请先补充标记的必填项'); return }
+  const ownerUserId = systemForm.ownerUserId
+  if (ownerUserId === undefined) return
   if (new Set(systemForm.collaboratorUserIds).size !== systemForm.collaboratorUserIds.length) {
     message.warning('同一系统的协助账号不能重复')
     return
   }
-  if (systemForm.collaboratorUserIds.includes(systemForm.ownerUserId)) {
+  if (systemForm.collaboratorUserIds.includes(ownerUserId)) {
     message.warning('负责人不能同时作为协助人')
     return
   }
   const body = {
     name: systemForm.name.trim(),
-    ownerUserId: systemForm.ownerUserId,
+    ownerUserId,
     collaboratorUserIds: systemForm.collaboratorUserIds,
   }
   try {
@@ -148,7 +154,8 @@ const saveSystem = async () => {
     await loadSystems()
     markChanged(['requirements', 'versions', 'dashboard'])
   } catch (error: unknown) {
-    handleError(error, '保存系统失败，请检查名称是否重复')
+    const details = applyServerErrors(error)
+    handleError(error, details.message || '保存系统失败，请检查名称是否重复')
   }
 }
 
@@ -246,8 +253,8 @@ usePageRefresh('systems', loadSystems)
     <Modal v-model:open="systemFormOpen" :title="systemFormMode === 'create' ? '新增系统' : '编辑系统'" :footer="null" destroy-on-close :get-container="false" @cancel="systemFormMode = null">
       <Form data-test="system-modal" layout="vertical" @submit.prevent="saveSystem">
         <p class="field-requirement-legend" data-test="system-field-legend">带 <span class="field-required">*</span> 的项目为必填项，选填项目可根据实际情况填写。</p>
-        <FormItem data-test="system-name-field" label="系统名称" required><Input v-model:value="systemForm.name" data-test="system-name" /></FormItem>
-        <FormItem label="负责人账号" required>
+        <FormItem data-test="system-name-field" label="系统名称" required :validate-status="errors.name ? 'error' : undefined" :help="errors.name"><Input v-model:value="systemForm.name" data-test="system-name" /></FormItem>
+        <FormItem label="负责人账号" required :validate-status="errors.ownerUserId ? 'error' : undefined" :help="errors.ownerUserId">
           <Select
             v-model:value="systemForm.ownerUserId"
             data-test="system-owner"

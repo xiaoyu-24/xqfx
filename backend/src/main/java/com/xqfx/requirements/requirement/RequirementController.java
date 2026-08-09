@@ -37,7 +37,7 @@ class RequirementController {
     RequirementResponse create(@Valid @RequestBody CreateRequirementRequest request) {
         return service.create(CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
                 request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
-                request.periodEndDate(), request.newSystem() == null ? null : request.newSystem().name(),
+                request.periodEndDate(), request.urgency(), request.newSystem() == null ? null : request.newSystem().name(),
                 request.newSystem() == null ? null : request.newSystem().ownerUserId(),
                 request.newSystem() == null ? null : request.newSystem().collaboratorUserIds());
     }
@@ -47,7 +47,7 @@ class RequirementController {
     RequirementResponse createDraft(@RequestBody DraftRequirementRequest request) {
         return service.createDraft(CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
                 request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
-                request.periodEndDate());
+                request.periodEndDate(), request.urgency());
     }
 
     @GetMapping
@@ -68,97 +68,92 @@ class RequirementController {
                                  @RequestParam(required = false) Long typeId,
                                  @RequestParam(required = false) RequirementStatus status,
                                  @RequestParam(required = false) RequirementSaveType saveType,
+                                 @RequestParam(defaultValue = "false") boolean unfinishedOnly,
                                  @RequestParam(required = false) String keyword,
-                                 @RequestParam(required = false) LocalDate submittedFrom,
-                                 @RequestParam(required = false) LocalDate submittedTo,
-                                 @RequestParam(required = false) LocalDate periodOverlapStart,
-                                 @RequestParam(required = false) LocalDate periodOverlapEnd) {
+                                 @RequestParam(required = false) String sortBy,
+                                 @RequestParam(required = false) String sortDirection) {
         return service.page(page, size, systemId, unassignedSystem, targetVersionId, departmentId, requesterName,
-                typeId, status, saveType, keyword, submittedFrom, submittedTo, periodOverlapStart, periodOverlapEnd);
+                typeId, status, saveType, unfinishedOnly, keyword, sortBy, sortDirection);
     }
 
-    @GetMapping("/management")
-    RequirementPageResponse management(@RequestParam(defaultValue = "0") int page,
-                                       @RequestParam(defaultValue = "20") int size) {
-        return service.managementPage(page, size);
-    }
-
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     RequirementResponse get(@PathVariable Long id) {
         return service.get(id);
     }
 
-    @GetMapping("/{id}/attachments")
+    @GetMapping("/{id:\\d+}/attachments")
     List<AttachmentResponse> attachments(@PathVariable Long id) {
         return attachments.list(id);
     }
 
-    @GetMapping("/{id}/progresses")
+    @GetMapping("/{id:\\d+}/progresses")
     List<RequirementProgressResponse> progresses(@PathVariable Long id) {
         return service.progresses(id);
     }
 
-    @PostMapping("/{id}/progresses")
+    @PostMapping("/{id:\\d+}/progresses")
     @ResponseStatus(HttpStatus.CREATED)
     RequirementProgressResponse addProgress(@PathVariable Long id,
                                             @Valid @RequestBody CreateProgressRequest request) {
         return service.addProgress(id, CurrentUser.require(), request.content(), request.status(), request.recordVersion());
     }
 
-    @PatchMapping("/{id}/assignee")
+    @PatchMapping("/{id:\\d+}/assignee")
     RequirementResponse assign(@PathVariable Long id, @Valid @RequestBody AssignRequirementRequest request) {
         return service.assign(id, request.assigneeUserId(), request.recordVersion(), CurrentUser.require());
     }
 
-    @PutMapping("/{id}/draft")
+    @PutMapping("/{id:\\d+}/draft")
     RequirementResponse updateDraft(@PathVariable Long id, @RequestBody DraftRequirementRequest request) {
         return service.updateDraft(id, request.requesterName(), request.departmentId(), request.title(), request.typeId(),
                 request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
-                request.periodEndDate(), request.recordVersion());
+                request.periodEndDate(), request.urgency(), request.recordVersion());
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/{id:\\d+}")
     RequirementResponse update(@PathVariable Long id, @Valid @RequestBody UpdateRequirementRequest request) {
         return service.update(id, CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
                 request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
-                request.periodEndDate(), request.recordVersion());
+                request.periodEndDate(), request.urgency(), request.recordVersion());
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:\\d+}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void delete(@PathVariable Long id) {
         service.delete(id);
     }
 
-    @PostMapping("/{id}/attachments")
+    @PostMapping("/{id:\\d+}/attachments")
     @ResponseStatus(HttpStatus.CREATED)
     AttachmentResponse upload(@PathVariable Long id,
                               @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
         return attachments.upload(id, file);
     }
 
-    record CreateProgressRequest(@NotBlank String content, RequirementStatus status,
+    record CreateProgressRequest(@NotBlank(message = "请输入进展内容") String content, RequirementStatus status,
                                  @NotNull Long recordVersion) {
     }
 
     record AssignRequirementRequest(Long assigneeUserId, @NotNull Long recordVersion) {
     }
 
-    record UpdateRequirementRequest(@NotBlank String requesterName, @NotNull Long departmentId,
-                                    @NotBlank String title, @NotNull Long typeId, @NotBlank String content,
+    record UpdateRequirementRequest(@NotBlank(message = "请输入姓名") String requesterName, @NotNull(message = "请选择部门") Long departmentId,
+                                    @NotBlank(message = "请输入需求标题") String title, @NotNull(message = "请选择需求类型") Long typeId, @NotBlank(message = "请输入需求内容") String content,
                                     Long systemId, Long targetVersionId, LocalDate periodStartDate,
-                                    LocalDate periodEndDate, @NotNull Long recordVersion) {
+                                    LocalDate periodEndDate, @NotNull(message = "请选择紧急程度") RequirementUrgency urgency,
+                                    @NotNull Long recordVersion) {
     }
 
-    record CreateRequirementRequest(@NotBlank String requesterName, @NotNull Long departmentId,
-                                    @NotBlank String title, @NotNull Long typeId, @NotBlank String content,
+    record CreateRequirementRequest(@NotBlank(message = "请输入姓名") String requesterName, @NotNull(message = "请选择部门") Long departmentId,
+                                    @NotBlank(message = "请输入需求标题") String title, @NotNull(message = "请选择需求类型") Long typeId, @NotBlank(message = "请输入需求内容") String content,
                                     Long systemId, Long targetVersionId, LocalDate periodStartDate,
-                                    LocalDate periodEndDate, NewSystemRequest newSystem) {
+                                    LocalDate periodEndDate, @NotNull(message = "请选择紧急程度") RequirementUrgency urgency,
+                                    NewSystemRequest newSystem) {
     }
 
     record DraftRequirementRequest(String requesterName, Long departmentId, String title, Long typeId,
                                    String content, Long systemId, Long targetVersionId, LocalDate periodStartDate,
-                                   LocalDate periodEndDate, Long recordVersion) {
+                                   LocalDate periodEndDate, RequirementUrgency urgency, Long recordVersion) {
     }
 
     record NewSystemRequest(String name, Long ownerUserId, List<Long> collaboratorUserIds) {

@@ -8,6 +8,8 @@ import { markChanged } from '../composables/refreshBus'
 import { useCreateFormState } from '../composables/useCreateFormState'
 import { useDictionaryOptions } from '../composables/useDictionaryOptions'
 import { useAuth } from '../composables/useAuth'
+import { urgencyOptions } from '../constants/urgencyConfig'
+import { useFormErrors } from '../composables/useFormErrors'
 
 type SystemMode = 'existing' | 'new' | 'none'
 
@@ -25,6 +27,7 @@ const form = reactive({
   departmentId: '',
   title: '',
   typeId: '',
+  urgency: 'MEDIUM',
   periodStartDate: '',
   periodEndDate: '',
   systemId: '',
@@ -38,6 +41,7 @@ const form = reactive({
 const aiText = ref('')
 const aiAnalyzing = ref(false)
 const { departments, requirementTypes, loadDictionaryOptions } = useDictionaryOptions()
+const { errors, clearErrors, setError, applyServerErrors } = useFormErrors()
 
 const analyzeWithAi = async () => {
   if (!aiText.value.trim()) {
@@ -109,12 +113,6 @@ const periodError = computed(() => {
   return ''
 })
 
-const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
-  if (!isDirty.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
 watch(isDirty, setCreateFormDirty, { immediate: true })
 
 watch(currentUser, (user) => {
@@ -127,7 +125,6 @@ watch(currentUser, (user) => {
 }, { immediate: true })
 
 onMounted(async () => {
-  window.addEventListener('beforeunload', beforeUnloadHandler)
   try {
     await loadDictionaryOptions()
   } catch {
@@ -146,7 +143,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('beforeunload', beforeUnloadHandler)
   setCreateFormDirty(false)
 })
 
@@ -175,6 +171,7 @@ const requestBody = () => ({
   departmentId: form.departmentId ? Number(form.departmentId) : null,
   title: form.title,
   typeId: form.typeId ? Number(form.typeId) : null,
+  urgency: form.urgency,
   content: form.content, periodStartDate: form.periodStartDate || null, periodEndDate: form.periodEndDate || null,
   systemId: systemMode.value === 'existing' && form.systemId ? Number(form.systemId) : null,
   targetVersionId: systemMode.value === 'existing' && form.targetVersionId ? Number(form.targetVersionId) : null,
@@ -184,6 +181,27 @@ const requestBody = () => ({
     collaboratorUserIds: form.newSystemCollaboratorUserIds,
   } : null,
 })
+const validateForm = (draft: boolean) => {
+  clearErrors()
+  if (draft) return true
+  const requiredFields: Array<[string, string, string]> = [
+    ['requesterName', form.requesterName, '请输入提出人姓名'],
+    ['departmentId', form.departmentId, '请选择部门'],
+    ['title', form.title, '请输入需求标题'],
+    ['typeId', form.typeId, '请选择需求类型'],
+    ['urgency', form.urgency, '请选择紧急程度'],
+    ['systemSelect', systemSelect.value, '请选择所属系统'],
+    ['content', form.content, '请输入需求内容'],
+  ]
+  requiredFields.forEach(([field, value, error]) => { if (!String(value).trim()) setError(field, error) })
+  if (systemMode.value === 'new') {
+    if (!form.newSystemName.trim()) setError('newSystemName', '请输入新系统名称')
+    if (form.newSystemOwnerUserId === undefined) setError('newSystemOwnerUserId', '请选择新系统负责人账号')
+  }
+  const valid = Object.keys(errors).length === 0
+  if (!valid) message.warning('请先补充标记的必填项')
+  return valid
+}
 const addFiles = (files: File[]) => {
   const accepted: File[] = []
   const rejected: string[] = []
@@ -225,12 +243,10 @@ const uploadFiles = async (requirementId: number) => {
   selectedFiles.value = []
 }
 const submit = async (draft: boolean) => {
+  if (!validateForm(draft)) return
   if (periodError.value) {
-    message.warning(periodError.value)
-    return
-  }
-  if (systemMode.value === 'new' && form.newSystemOwnerUserId === undefined) {
-    message.warning('请选择新系统负责人账号')
+    setError('period', periodError.value)
+    message.warning('请修正需求时间周期')
     return
   }
   submitting.value = true
@@ -244,26 +260,27 @@ const submit = async (draft: boolean) => {
     lastSavedSnapshot.value = createSnapshot()
     message.success(draft ? '暂存成功' : '保存成功')
     markChanged(shouldRefreshSystemPages
-      ? ['requirements', 'management', 'systems', 'versions', 'dashboard']
-      : ['requirements', 'management', 'dashboard'])
+      ? ['requirements', 'systems', 'versions', 'dashboard']
+      : ['requirements', 'dashboard'])
     if (!draft) await router.push({ name: 'requirement-list' })
-  } catch {
-    message.error('保存失败，请检查填写内容后重试')
+  } catch (error: unknown) {
+    const details = applyServerErrors(error)
+    message.error(details.message || '保存失败，请检查标记的字段后重试')
   } finally { submitting.value = false }
 }
 
 </script>
 
 <template>
-  <section class="requirement-form-shell" aria-labelledby="requirement-form-title">
+  <section class="requirement-form-shell" aria-labelledby="requirement-form-title" data-test="ai-import-text">
     <Card class="requirement-form-card" data-test="requirement-form-card" :bordered="false">
       <Collapse class="ai-import-collapse" :bordered="false">
-        <CollapsePanel key="ai-import">
+        <CollapsePanel key="ai-import" data-test="ai-import-panel">
           <template #header>
             <span class="ai-import-header"><RobotOutlined /> AI 智能导入</span>
           </template>
           <p class="ai-import-hint">粘贴一段需求描述文本，AI 将自动识别并填充空白字段（已有内容不会被覆盖，不会自动提交）。</p>
-          <Input.TextArea v-model:value="aiText" data-test="ai-import-text" :rows="4" placeholder="请粘贴需求描述文本…" />
+          <Input.TextArea v-model:value="aiText" data-test="ai-import-input" :rows="4" placeholder="请粘贴需求描述文本…" />
           <Button class="ai-analyze-btn" type="primary" ghost :loading="aiAnalyzing" @click="analyzeWithAi">分析并填充</Button>
         </CollapsePanel>
       </Collapse>
@@ -272,27 +289,31 @@ const submit = async (draft: boolean) => {
 
       <Form :model="form" layout="vertical" class="requirement-form" @submit.prevent="submit(false)">
         <div class="form-grid">
-          <Form.Item data-test="requester-name-field" label="姓名" required>
-            <Input v-model:value="form.requesterName" required placeholder="请输入提出人姓名" />
+          <Form.Item data-test="requester-name-field" label="姓名" required :validate-status="errors.requesterName ? 'error' : undefined" :help="errors.requesterName">
+            <Input v-model:value="form.requesterName" placeholder="请输入提出人姓名" />
           </Form.Item>
 
-          <Form.Item label="部门" required>
+          <Form.Item label="部门" required :validate-status="errors.departmentId ? 'error' : undefined" :help="errors.departmentId">
             <Select v-model:value="form.departmentId" data-test="department-select" placeholder="请选择部门" class="department-select" :disabled="currentUser?.departmentId !== null && currentUser?.departmentId !== undefined">
               <Select.Option v-for="department in departments" :key="department.id" :value="String(department.id)">{{ department.name }}</Select.Option>
             </Select>
           </Form.Item>
 
-          <Form.Item class="full-width" label="需求标题" required>
-            <Input v-model:value="form.title" required placeholder="请简要概括需求" />
+          <Form.Item class="full-width" label="需求标题" required :validate-status="errors.title ? 'error' : undefined" :help="errors.title">
+            <Input v-model:value="form.title" placeholder="请简要概括需求" />
           </Form.Item>
 
-          <Form.Item label="类型" required>
+          <Form.Item label="类型" required :validate-status="errors.typeId ? 'error' : undefined" :help="errors.typeId">
             <Select v-model:value="form.typeId" placeholder="请选择需求类型">
               <Select.Option v-for="type in requirementTypes" :key="type.id" :value="String(type.id)">{{ type.name }}</Select.Option>
             </Select>
           </Form.Item>
 
-          <Form.Item class="period-form-item" label="需求时间周期（上海时间）" data-test="period-field" :validate-status="periodError ? 'error' : undefined" :help="periodError || undefined">
+          <Form.Item label="紧急程度" required :validate-status="errors.urgency ? 'error' : undefined" :help="errors.urgency">
+            <Select v-model:value="form.urgency" :options="urgencyOptions" />
+          </Form.Item>
+
+          <Form.Item class="period-form-item" label="需求时间周期（上海时间）" data-test="period-field" :validate-status="errors.period ? 'error' : undefined" :help="errors.period || undefined">
             <div class="date-range">
               <DatePicker v-model:value="form.periodStartDate" value-format="YYYY-MM-DD" placeholder="开始日期" aria-label="开始日期" :status="periodError ? 'error' : undefined" />
               <span class="range-separator">至</span>
@@ -300,7 +321,7 @@ const submit = async (draft: boolean) => {
             </div>
           </Form.Item>
 
-          <Form.Item class="full-width" label="所属系统" required>
+          <Form.Item class="full-width" label="所属系统" required :validate-status="errors.systemSelect ? 'error' : undefined" :help="errors.systemSelect">
             <Select v-model:value="systemSelect" data-test="system-select" placeholder="请选择系统" @change="onSystemSelectChange">
               <Select.Option v-for="system in systems" :key="system.id" :value="String(system.id)">{{ system.name }}</Select.Option>
               <Select.Option value="new">新系统</Select.Option>
@@ -317,14 +338,13 @@ const submit = async (draft: boolean) => {
           </template>
 
           <template v-else-if="systemMode === 'new'">
-            <Form.Item data-test="new-system-name-field" label="新系统名称" required>
-              <Input v-model:value="form.newSystemName" :required="systemMode === 'new'" placeholder="请输入系统名称" />
+            <Form.Item data-test="new-system-name-field" label="新系统名称" required :validate-status="errors.newSystemName ? 'error' : undefined" :help="errors.newSystemName">
+              <Input v-model:value="form.newSystemName" placeholder="请输入系统名称" />
             </Form.Item>
-            <Form.Item label="新系统负责人账号" required>
+            <Form.Item label="新系统负责人账号" required :validate-status="errors.newSystemOwnerUserId ? 'error' : undefined" :help="errors.newSystemOwnerUserId">
               <Select
                 v-model:value="form.newSystemOwnerUserId"
                 :options="activeUsers.map((user) => ({ value: user.id, label: `${user.displayName}（${user.username}）` }))"
-                :required="systemMode === 'new'"
                 placeholder="请选择启用账号"
                 show-search
                 option-filter-prop="label"
@@ -342,8 +362,8 @@ const submit = async (draft: boolean) => {
             </Form.Item>
           </template>
 
-          <Form.Item class="full-width" label="需求内容" required>
-            <Input.TextArea v-model:value="form.content" required :rows="10" placeholder="请描述背景、问题、期望结果和验收标准" />
+          <Form.Item class="full-width" label="需求内容" required :validate-status="errors.content ? 'error' : undefined" :help="errors.content">
+            <Input.TextArea v-model:value="form.content" :rows="10" placeholder="请描述背景、问题、期望结果和验收标准" />
           </Form.Item>
 
           <Form.Item class="full-width attachment-form-item" data-test="attachment-field" label="附件">

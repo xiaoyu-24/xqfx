@@ -15,6 +15,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 class ApiExceptionHandler {
@@ -24,12 +26,13 @@ class ApiExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ApiError handleValidation(MethodArgumentNotValidException exception) {
-        var firstMessage = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getDefaultMessage())
-                .filter(message -> message != null && !message.isBlank())
-                .findFirst()
-                .orElse("请求参数无效");
-        return new ApiError(firstMessage, null);
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        exception.getBindingResult().getFieldErrors().forEach(error -> {
+            var message = error.getDefaultMessage();
+            if (message != null && !message.isBlank()) fieldErrors.putIfAbsent(error.getField(), message);
+        });
+        var firstMessage = fieldErrors.values().stream().findFirst().orElse("请求参数无效");
+        return new ApiError(firstMessage, null, fieldErrors);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -83,6 +86,9 @@ class ApiExceptionHandler {
                 .body(new ApiError("系统处理失败，请联系管理员并提供追踪编号", traceId));
     }
 
-    record ApiError(String message, String traceId) {
+    record ApiError(String message, String traceId, Map<String, String> fieldErrors) {
+        ApiError(String message, String traceId) {
+            this(message, traceId, Map.of());
+        }
     }
 }

@@ -1,7 +1,11 @@
 package com.xqfx.requirements.requirement;
 
 import org.springframework.data.jpa.domain.Specification;
-import java.time.LocalDate;
+
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Root;
+
+import java.util.List;
 
 final class RequirementSpecifications {
     private RequirementSpecifications() { }
@@ -9,8 +13,8 @@ final class RequirementSpecifications {
     static Specification<RequirementEntity> filtered(Long systemId, boolean unassignedSystem, Long targetVersionId,
                                                      Long departmentId, String requesterName, Long typeId,
                                                      RequirementStatus status, RequirementSaveType saveType,
-                                                     String keyword, LocalDate submittedFrom, LocalDate submittedTo,
-                                                     LocalDate periodOverlapStart, LocalDate periodOverlapEnd) {
+                                                     String keyword,
+                                                     boolean unfinishedOnly, String sortBy, String sortDirection) {
         Specification<RequirementEntity> specification = (root, query, criteriaBuilder) -> criteriaBuilder.isFalse(root.get("deleted"));
         if (systemId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("system").get("id"), systemId));
         if (unassignedSystem) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.isNull(root.get("system")));
@@ -20,25 +24,57 @@ final class RequirementSpecifications {
         if (typeId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("type").get("id"), typeId));
         if (status != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("status"), status));
         if (saveType != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("saveType"), saveType));
+        if (unfinishedOnly) {
+            specification = specification.and((root, query, criteriaBuilder) -> root.get("status").in(unfinishedStatuses()));
+        }
         if (hasText(keyword)) {
             var pattern = "%" + keyword.trim().toLowerCase() + "%";
-            specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.or(
-                    criteriaBuilder.like(criteriaBuilder.lower(root.get("title")), pattern),
-                    criteriaBuilder.like(criteriaBuilder.lower(root.get("content")), pattern)
-            ));
+            specification = specification.and((root, query, criteriaBuilder) -> {
+                var progressQuery = query.subquery(Long.class);
+                Root<RequirementProgressEntity> progress = progressQuery.from(RequirementProgressEntity.class);
+                progressQuery.select(criteriaBuilder.literal(1L)).where(criteriaBuilder.and(
+                        criteriaBuilder.equal(progress.get("requirement").get("id"), root.get("id")),
+                        criteriaBuilder.like(criteriaBuilder.lower(progress.get("content")), pattern)
+                ));
+                return criteriaBuilder.or(
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("title")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("content")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("requesterName")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("handledBy")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("completionDescription")), pattern),
+                        criteriaBuilder.exists(progressQuery)
+                );
+            });
         }
-        if (submittedFrom != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.greaterThanOrEqualTo(root.get("submittedAt"), submittedFrom.atStartOfDay()));
-        if (submittedTo != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.lessThan(root.get("submittedAt"), submittedTo.plusDays(1).atStartOfDay()));
-        if (periodOverlapStart != null && periodOverlapEnd != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.and(criteriaBuilder.lessThanOrEqualTo(root.get("periodStartDate"), periodOverlapEnd), criteriaBuilder.greaterThanOrEqualTo(root.get("periodEndDate"), periodOverlapStart)));
-        return specification;
+        return specification.and(orderBy(sortBy, sortDirection));
     }
 
-    static Specification<RequirementEntity> management() {
+    private static Specification<RequirementEntity> orderBy(String sortBy, String sortDirection) {
         return (root, query, criteriaBuilder) -> {
-            var active = criteriaBuilder.isFalse(root.get("deleted"));
-            var terminal = root.get("status").in(RequirementStatus.COMPLETED, RequirementStatus.CLOSED, RequirementStatus.REJECTED);
-            return criteriaBuilder.and(active, criteriaBuilder.or(criteriaBuilder.isNull(root.get("status")), criteriaBuilder.not(terminal)));
+            if (!Long.class.equals(query.getResultType())) {
+                if ("urgency".equals(sortBy)) {
+                    Expression<Integer> priority = criteriaBuilder.<Integer>selectCase()
+                            .when(criteriaBuilder.equal(root.get("urgency"), RequirementUrgency.HIGH), 1)
+                            .when(criteriaBuilder.equal(root.get("urgency"), RequirementUrgency.MEDIUM), 2)
+                            .otherwise(3);
+                    var order = "desc".equalsIgnoreCase(sortDirection)
+                            ? criteriaBuilder.desc(priority)
+                            : criteriaBuilder.asc(priority);
+                    query.orderBy(order, criteriaBuilder.desc(root.get("createdAt")));
+                } else {
+                    query.orderBy(criteriaBuilder.desc(root.get("createdAt")));
+                }
+            }
+            return criteriaBuilder.conjunction();
         };
+    }
+
+    private static List<RequirementStatus> unfinishedStatuses() {
+        return List.of(
+                RequirementStatus.PENDING_EVALUATION,
+                RequirementStatus.CONFIRMED,
+                RequirementStatus.IN_DEVELOPMENT,
+                RequirementStatus.PAUSED);
     }
 
     private static boolean hasText(String value) { return value != null && !value.isBlank(); }

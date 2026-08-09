@@ -8,7 +8,6 @@ import NotificationCenter from '../components/NotificationCenter.vue'
 import RequirementForm from '../components/RequirementForm.vue'
 import RequirementDetail from '../components/RequirementDetail.vue'
 import RequirementList from '../components/RequirementList.vue'
-import RequirementManagement from '../components/RequirementManagement.vue'
 import SystemManagement from '../components/SystemManagement.vue'
 import UserManagement from '../components/UserManagement.vue'
 import VersionManagement from '../components/VersionManagement.vue'
@@ -68,12 +67,6 @@ const routes: RouteRecordRaw[] = [
     name: 'notification-center',
     component: NotificationCenter,
     meta: protectedPage('notifications', '站内消息', '查看需求动态与待处理提醒。'),
-  },
-  {
-    path: '/management',
-    name: 'requirement-management',
-    component: RequirementManagement,
-    meta: protectedPage('management', '管理需求', '跟进待处理需求和暂存草稿。'),
   },
   {
     path: '/systems',

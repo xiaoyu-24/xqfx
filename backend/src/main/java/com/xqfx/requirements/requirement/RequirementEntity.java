@@ -53,6 +53,10 @@ class RequirementEntity {
     @JoinColumn(name = "type_id")
     private DictionaryItemEntity type;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private RequirementUrgency urgency = RequirementUrgency.MEDIUM;
+
     @Column(length = 10000)
     private String content;
 
@@ -96,7 +100,7 @@ class RequirementEntity {
 
     RequirementEntity(UserEntity requesterUser, String requesterName, DictionaryItemEntity department, String title,
                       DictionaryItemEntity type, String content, SystemEntity system,
-                      SystemVersionEntity targetVersion, RequirementPeriod period) {
+                      SystemVersionEntity targetVersion, RequirementPeriod period, RequirementUrgency urgency) {
         this.requesterUser = requesterUser;
         this.requesterName = requesterName;
         this.department = department;
@@ -107,13 +111,14 @@ class RequirementEntity {
         this.targetVersion = targetVersion;
         this.periodStartDate = period.startDate();
         this.periodEndDate = period.endDate();
+        this.urgency = normalizeUrgency(urgency);
         this.saveType = RequirementSaveType.SUBMITTED;
         this.status = RequirementStatus.PENDING_EVALUATION;
     }
 
     static RequirementEntity draft(UserEntity requesterUser, String requesterName, DictionaryItemEntity department, String title,
                                    DictionaryItemEntity type, String content, SystemEntity system,
-                                   SystemVersionEntity targetVersion, RequirementPeriod period) {
+                                   SystemVersionEntity targetVersion, RequirementPeriod period, RequirementUrgency urgency) {
         var draft = new RequirementEntity();
         draft.requesterUser = requesterUser;
         draft.requesterName = requesterName;
@@ -125,6 +130,7 @@ class RequirementEntity {
         draft.targetVersion = targetVersion;
         draft.periodStartDate = period.startDate();
         draft.periodEndDate = period.endDate();
+        draft.urgency = normalizeUrgency(urgency);
         draft.saveType = RequirementSaveType.DRAFT;
         return draft;
     }
@@ -137,6 +143,7 @@ class RequirementEntity {
     DictionaryItemEntity department() { return department; }
     String title() { return title; }
     DictionaryItemEntity type() { return type; }
+    RequirementUrgency urgency() { return urgency; }
     String content() { return content; }
     SystemEntity system() { return system; }
     SystemVersionEntity targetVersion() { return targetVersion; }
@@ -168,7 +175,7 @@ class RequirementEntity {
 
     void update(String requesterName, DictionaryItemEntity department, String title,
                 DictionaryItemEntity type, String content, SystemEntity system,
-                SystemVersionEntity targetVersion, RequirementPeriod period) {
+                SystemVersionEntity targetVersion, RequirementPeriod period, RequirementUrgency urgency) {
         this.requesterName = requesterName;
         this.department = department;
         this.title = title;
@@ -178,6 +185,7 @@ class RequirementEntity {
         this.targetVersion = targetVersion;
         this.periodStartDate = period.startDate();
         this.periodEndDate = period.endDate();
+        this.urgency = normalizeUrgency(urgency);
         if (isDraft()) {
             this.saveType = RequirementSaveType.SUBMITTED;
             this.submittedAt = now();
@@ -191,7 +199,7 @@ class RequirementEntity {
 
     void updateDraft(String requesterName, DictionaryItemEntity department, String title,
                      DictionaryItemEntity type, String content, SystemEntity system,
-                     SystemVersionEntity targetVersion, RequirementPeriod period) {
+                     SystemVersionEntity targetVersion, RequirementPeriod period, RequirementUrgency urgency) {
         this.requesterName = requesterName;
         this.department = department;
         this.title = title;
@@ -201,6 +209,7 @@ class RequirementEntity {
         this.targetVersion = targetVersion;
         this.periodStartDate = period.startDate();
         this.periodEndDate = period.endDate();
+        this.urgency = normalizeUrgency(urgency);
     }
 
     void delete() {
@@ -225,5 +234,9 @@ class RequirementEntity {
 
     private static LocalDateTime now() {
         return LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+    }
+
+    private static RequirementUrgency normalizeUrgency(RequirementUrgency urgency) {
+        return urgency == null ? RequirementUrgency.MEDIUM : urgency;
     }
 }
