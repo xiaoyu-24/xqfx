@@ -7,55 +7,64 @@ import 'dayjs/locale/zh-cn'
 import { useRoute, useRouter } from 'vue-router'
 
 dayjs.locale('zh-cn')
-import { AppstoreOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined, FileTextOutlined, LogoutOutlined, RobotOutlined, SettingOutlined, TagsOutlined, TeamOutlined, UnorderedListOutlined } from '@ant-design/icons-vue'
+import { AppstoreOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined, FileTextOutlined, LogoutOutlined, PieChartOutlined, PlusOutlined, RobotOutlined, SettingOutlined, TeamOutlined, UnorderedListOutlined } from '@ant-design/icons-vue'
 import { themeConfig } from './theme'
 import { onUnauthorized } from './api'
-import { useAuth } from './composables/useAuth'
+import { useAuth, type UserRole } from './composables/useAuth'
 import { useCreateFormState } from './composables/useCreateFormState'
 import { useNotifications } from './composables/useNotifications'
 import LoginPage from './components/LoginPage.vue'
 import PageContainer from './components/PageContainer.vue'
 
-type PageKey = 'dashboard' | 'create' | 'list' | 'systems' | 'versions' | 'ai-config' | 'users' | 'dictionaries'
+type PageKey = 'dashboard' | 'create' | 'list' | 'overview' | 'systems' | 'ai-config' | 'users' | 'dictionaries'
 
 interface PageDefinition {
   key: PageKey
   routeName: string
   label: string
   description: string
-  /** 仅管理员可见。路由守卫和后端接口同样会校验角色。 */
-  adminOnly?: boolean
+  /** 前端只负责可见性；路由守卫和后端接口才是权限防线。 */
+  roles: UserRole[]
 }
 
 const pages: PageDefinition[] = [
-  { key: 'dashboard', routeName: 'dashboard', label: '待办工作台', description: '查看当前账号负责和协助处理的系统需求。' },
-  { key: 'create', routeName: 'requirement-create', label: '填写需求', description: '填写、暂存或正式保存系统需求。' },
-  { key: 'list', routeName: 'requirement-list', label: '需求列表', description: '查看、筛选、编辑和删除全部需求。' },
-  { key: 'systems', routeName: 'system-management', label: '系统管理', description: '维护系统、负责人和协助人。' },
-  { key: 'versions', routeName: 'version-management', label: '版本管理', description: '维护各系统的版本信息。' },
-  { key: 'users', routeName: 'user-management', label: '人员管理', description: '维护账号、重置密码和启停人员。', adminOnly: true },
-  { key: 'dictionaries', routeName: 'dictionary-management', label: '字典管理', description: '维护部门和需求类型，停用项保留历史记录。', adminOnly: true },
-  { key: 'ai-config', routeName: 'ai-config', label: 'AI 配置', description: '配置 AI 智能分析服务连接信息。', adminOnly: true },
+  { key: 'dashboard', routeName: 'dashboard', label: '待办工作台', description: '查看当前账号负责和协助处理的系统需求。', roles: ['HANDLER', 'ADMIN'] },
+  { key: 'create', routeName: 'requirement-create', label: '填写需求', description: '填写、暂存或正式保存系统需求。', roles: ['USER', 'HANDLER', 'ADMIN'] },
+  { key: 'list', routeName: 'requirement-list', label: '需求列表', description: '查看、筛选、编辑和删除全部需求。', roles: ['USER', 'HANDLER', 'ADMIN'] },
+  { key: 'overview', routeName: 'requirement-overview', label: '需求概览', description: '全平台需求分布一览 · 仅需求处理员与管理员可见。', roles: ['HANDLER', 'ADMIN'] },
+  { key: 'systems', routeName: 'system-management', label: '系统与版本', description: '查看系统负责人、协助人及其版本信息。', roles: ['USER', 'HANDLER', 'ADMIN'] },
+  { key: 'users', routeName: 'user-management', label: '人员管理', description: '维护账号、角色、重置密码和启停人员。', roles: ['ADMIN'] },
+  { key: 'dictionaries', routeName: 'dictionary-management', label: '字典管理', description: '维护部门和需求类型，停用项保留历史记录。', roles: ['ADMIN'] },
+  { key: 'ai-config', routeName: 'ai-config', label: 'AI 配置', description: '配置 AI 智能分析服务连接信息。', roles: ['ADMIN'] },
 ]
 
 const router = useRouter()
 const route = useRoute()
-const { currentUser, initializing, isLoggedIn, isAdmin, logout, clearSession } = useAuth()
+const { currentUser, initializing, isLoggedIn, isHandler, logout, clearSession, role } = useAuth()
 const { createFormDirty, setCreateFormDirty } = useCreateFormState()
 const { unreadCount, refreshUnreadCount, clearUnreadCount } = useNotifications()
 const globalKeyword = ref('')
 
-const visiblePages = computed(() => pages.filter((page) => !page.adminOnly || isAdmin.value))
+const visiblePages = computed(() => pages.filter((page) => role.value !== null && page.roles.includes(role.value)))
 const activePage = computed<PageKey>(() => {
   const pageKey = route.meta.pageKey
   return pages.some((page) => page.key === pageKey) ? pageKey as PageKey : 'dashboard'
 })
-const active = computed(() => visiblePages.value.find((page) => page.key === activePage.value) ?? visiblePages.value[0])
-const pageTitle = computed(() => route.name === 'requirement-detail' && route.query.edit === '1'
-  ? '编辑需求'
+const active = computed(() => visiblePages.value.find((page) => page.key === activePage.value) ?? visiblePages.value[0] ?? pages[0])
+const pageTitle = computed(() => route.name === 'user-management'
+  ? ''
+  : route.name === 'requirement-detail' && route.query.edit === '1'
+  ? ''
   : typeof route.meta.title === 'string' ? route.meta.title : active.value.label)
-const pageDescription = computed(() => typeof route.meta.description === 'string' ? route.meta.description : active.value.description)
-const cachedViews = ['RequirementList', 'SystemManagement', 'VersionManagement']
+const pageTitleTag = computed(() => route.name === 'requirement-detail' && route.query.edit === '1'
+  ? ''
+  : '')
+const pageDescription = computed(() => route.name === 'user-management'
+  ? ''
+  : route.name === 'requirement-detail' && route.query.edit === '1'
+  ? ''
+  : typeof route.meta.description === 'string' ? route.meta.description : active.value.description)
+const cachedViews = ['RequirementList', 'SystemManagement']
 
 // 浏览器前进/后退和所有菜单跳转共用这一层离开确认，不让未保存内容被路由切换覆盖。
 const confirmUnsavedLeave = () => new Promise<boolean>((resolve) => {
@@ -85,9 +94,9 @@ const stopNotificationRefresh = () => {
   }
 }
 
-watch(isLoggedIn, (loggedIn) => {
+watch([isLoggedIn, isHandler], ([loggedIn, canUseNotifications]) => {
   stopNotificationRefresh()
-  if (!loggedIn) {
+  if (!loggedIn || !canUseNotifications) {
     clearUnreadCount()
     return
   }
@@ -123,8 +132,15 @@ const handleMenuClick = ({ key }: { key: string | number }) => {
 }
 
 const openNotificationCenter = () => {
+  if (!isHandler.value) return
   void router.push({ name: 'notification-center' })
 }
+
+const roleLabel = computed(() => ({
+  USER: '普通用户',
+  HANDLER: '需求处理员',
+  ADMIN: '管理员',
+}[role.value ?? 'USER']))
 
 const searchRequirements = () => {
   const keyword = globalKeyword.value.trim()
@@ -145,15 +161,15 @@ const searchRequirements = () => {
         <LayoutHeader class="pro-header ant-layout-header">
         <div class="brand ant-brand">
           <AppstoreOutlined class="brand-icon" />
-          <span class="brand-title">需求分析平台</span>
+          <span class="brand-title">需求收集平台</span>
         </div>
         <div class="app-global-search">
           <Input.Search v-model:value="globalKeyword" allow-clear placeholder="搜索需求" @search="searchRequirements" />
         </div>
         <div class="app-user-box">
           <span class="app-user-name" data-test="current-user">{{ currentUser?.displayName }}</span>
-          <span class="app-user-role">{{ isAdmin ? '管理员' : '普通用户' }}</span>
-          <Button type="text" class="notification-bell" data-test="notification-bell" title="站内消息" aria-label="站内消息" @click="openNotificationCenter">
+          <span class="app-user-role">{{ roleLabel }}</span>
+          <Button v-if="isHandler" type="text" class="notification-bell" data-test="notification-bell" title="站内消息" aria-label="站内消息" @click="openNotificationCenter">
             <Badge :count="unreadCount" :overflow-count="99" :show-zero="false">
               <BellOutlined />
             </Badge>
@@ -173,8 +189,8 @@ const searchRequirements = () => {
                   <DashboardOutlined v-if="page.key === 'dashboard'" />
                   <FileTextOutlined v-else-if="page.key === 'create'" />
                   <UnorderedListOutlined v-else-if="page.key === 'list'" />
+                  <PieChartOutlined v-else-if="page.key === 'overview'" />
                   <SettingOutlined v-else-if="page.key === 'systems'" />
-                  <TagsOutlined v-else-if="page.key === 'versions'" />
                   <TeamOutlined v-else-if="page.key === 'users'" />
                   <DatabaseOutlined v-else-if="page.key === 'dictionaries'" />
                   <RobotOutlined v-else />
@@ -184,14 +200,16 @@ const searchRequirements = () => {
             </Menu>
           </nav>
         </LayoutSider>
-        <LayoutContent class="main-content ant-main-content">
-          <PageContainer :title="pageTitle" :description="pageDescription">
-            <template v-if="route.name === 'requirement-detail'" #extra>
+        <LayoutContent class="main-content ant-main-content" :class="{ 'requirements-list-content': route.name === 'requirement-list' }">
+           <PageContainer :class="{ 'requirement-list-container': route.name === 'requirement-list' }" :title="pageTitle" :title-tag="pageTitleTag" :description="pageDescription">
+            <template v-if="route.name === 'requirement-detail' && route.query.edit !== '1'" #extra>
               <div class="requirement-page-actions">
                 <Button @click="router.push({ name: 'requirement-list' })">返回列表</Button>
-                <Button v-if="route.query.edit === '1'" @click="router.replace({ name: 'requirement-detail', params: route.params, query: Object.fromEntries(Object.entries(route.query).filter(([key]) => key !== 'edit')) })">取消编辑</Button>
-                <Button v-else type="primary" data-test="edit-from-detail" @click="router.replace({ name: 'requirement-detail', params: route.params, query: { ...route.query, edit: '1' } })">编辑需求</Button>
+                <Button type="primary" data-test="edit-from-detail" @click="router.replace({ name: 'requirement-detail', params: route.params, query: { ...route.query, edit: '1' } })">编辑需求</Button>
               </div>
+            </template>
+            <template v-else-if="route.name === 'requirement-list'" #extra>
+               <Button type="primary" data-test="create-requirement" @click="router.push({ name: 'requirement-create' })"><template #icon><PlusOutlined /></template>填写需求</Button>
             </template>
             <RouterView v-slot="{ Component }">
               <KeepAlive :include="cachedViews">

@@ -1,21 +1,21 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { useAuth } from '../composables/useAuth'
+import { useAuth, type UserRole } from '../composables/useAuth'
 import AiConfigPage from '../components/AiConfigPage.vue'
 import Dashboard from '../components/Dashboard.vue'
 import DictionaryManagement from '../components/DictionaryManagement.vue'
 import LoginPage from '../components/LoginPage.vue'
 import NotificationCenter from '../components/NotificationCenter.vue'
+import OverviewPage from '../components/OverviewPage.vue'
 import RequirementForm from '../components/RequirementForm.vue'
 import RequirementDetail from '../components/RequirementDetail.vue'
 import RequirementList from '../components/RequirementList.vue'
 import SystemManagement from '../components/SystemManagement.vue'
 import UserManagement from '../components/UserManagement.vue'
-import VersionManagement from '../components/VersionManagement.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
-    requiresAdmin?: boolean
+    roles?: UserRole[]
     guestOnly?: boolean
     pageKey?: string
     title?: string
@@ -23,9 +23,9 @@ declare module 'vue-router' {
   }
 }
 
-const protectedPage = (pageKey: string, title: string, description: string, requiresAdmin = false) => ({
+const protectedPage = (pageKey: string, title: string, description: string, roles: UserRole[] = ['USER', 'HANDLER', 'ADMIN']) => ({
   requiresAuth: true,
-  requiresAdmin,
+  roles,
   pageKey,
   title,
   description,
@@ -42,7 +42,7 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'dashboard',
     component: Dashboard,
-    meta: protectedPage('dashboard', '待办工作台', '查看当前账号负责和协助处理的系统需求。'),
+    meta: protectedPage('dashboard', '待办工作台', '查看当前账号负责和协助处理的系统需求。', ['HANDLER', 'ADMIN']),
   },
   {
     path: '/requirements/new',
@@ -57,6 +57,12 @@ const routes: RouteRecordRaw[] = [
     meta: protectedPage('list', '需求列表', '查看、筛选、编辑和删除全部需求。'),
   },
   {
+    path: '/overview',
+    name: 'requirement-overview',
+    component: OverviewPage,
+    meta: protectedPage('overview', '需求概览', '全平台需求分布一览 · 仅需求处理员与管理员可见。', ['HANDLER', 'ADMIN']),
+  },
+  {
     path: '/requirements/:id(\\d+)',
     name: 'requirement-detail',
     component: RequirementDetail,
@@ -66,37 +72,36 @@ const routes: RouteRecordRaw[] = [
     path: '/notifications',
     name: 'notification-center',
     component: NotificationCenter,
-    meta: protectedPage('notifications', '站内消息', '查看需求动态与待处理提醒。'),
+    meta: protectedPage('notifications', '站内消息', '查看需求动态与待处理提醒。', ['HANDLER', 'ADMIN']),
   },
   {
     path: '/systems',
     name: 'system-management',
     component: SystemManagement,
-    meta: protectedPage('systems', '系统管理', '维护系统、负责人和协助人。'),
+    meta: protectedPage('systems', '系统与版本', '查看系统、负责人、协助人和版本信息。'),
   },
   {
     path: '/versions',
     name: 'version-management',
-    component: VersionManagement,
-    meta: protectedPage('versions', '版本管理', '维护各系统的版本信息。'),
+    redirect: { name: 'system-management' },
   },
   {
     path: '/admin/users',
     name: 'user-management',
     component: UserManagement,
-    meta: protectedPage('users', '人员管理', '维护账号、重置密码和启停人员。', true),
+    meta: protectedPage('users', '人员管理', '维护账号、重置密码和启停人员。', ['ADMIN']),
   },
   {
     path: '/admin/dictionaries',
     name: 'dictionary-management',
     component: DictionaryManagement,
-    meta: protectedPage('dictionaries', '字典管理', '维护部门和需求类型，停用项保留历史记录。', true),
+    meta: protectedPage('dictionaries', '字典管理', '维护部门和需求类型，停用项保留历史记录。', ['ADMIN']),
   },
   {
     path: '/admin/ai-config',
     name: 'ai-config',
     component: AiConfigPage,
-    meta: protectedPage('ai-config', 'AI 配置', '配置 AI 智能分析服务连接信息。', true),
+    meta: protectedPage('ai-config', 'AI 配置', '配置 AI 智能分析服务连接信息。', ['ADMIN']),
   },
   {
     path: '/:pathMatch(.*)*',
@@ -111,10 +116,12 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  const { initialize, isAdmin, isLoggedIn } = useAuth()
+  const { initialize, isHandler, isLoggedIn, role } = useAuth()
   await initialize()
 
-  if (to.meta.guestOnly && isLoggedIn.value) return { name: 'dashboard' }
+  const homeRoute = () => isHandler.value ? { name: 'dashboard' as const } : { name: 'requirement-list' as const }
+
+  if (to.meta.guestOnly && isLoggedIn.value) return homeRoute()
 
   if (to.meta.requiresAuth && !isLoggedIn.value) {
     return {
@@ -123,7 +130,9 @@ router.beforeEach(async (to) => {
     }
   }
 
-  if (to.meta.requiresAdmin && !isAdmin.value) return { name: 'dashboard' }
+  if (to.meta.roles && (!role.value || !to.meta.roles.includes(role.value))) {
+    return { name: 'requirement-list' }
+  }
 
   return true
 })

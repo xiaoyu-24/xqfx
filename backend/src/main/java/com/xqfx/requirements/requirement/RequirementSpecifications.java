@@ -14,7 +14,8 @@ final class RequirementSpecifications {
                                                      Long departmentId, String requesterName, Long typeId,
                                                      RequirementStatus status, RequirementSaveType saveType,
                                                      String keyword,
-                                                     boolean unfinishedOnly, String sortBy, String sortDirection) {
+                                                     boolean unfinishedOnly, String sortBy, String sortDirection,
+                                                     Long requesterUserId) {
         Specification<RequirementEntity> specification = (root, query, criteriaBuilder) -> criteriaBuilder.isFalse(root.get("deleted"));
         if (systemId != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("system").get("id"), systemId));
         if (unassignedSystem) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.isNull(root.get("system")));
@@ -26,6 +27,9 @@ final class RequirementSpecifications {
         if (saveType != null) specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("saveType"), saveType));
         if (unfinishedOnly) {
             specification = specification.and((root, query, criteriaBuilder) -> root.get("status").in(unfinishedStatuses()));
+        }
+        if (requesterUserId != null) {
+            specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("requesterUser").get("id"), requesterUserId));
         }
         if (hasText(keyword)) {
             var pattern = "%" + keyword.trim().toLowerCase() + "%";

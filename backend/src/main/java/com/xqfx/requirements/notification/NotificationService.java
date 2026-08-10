@@ -28,7 +28,7 @@ public class NotificationService {
     public void publish(NotificationEvent event, Collection<UserEntity> recipients) {
         var uniqueRecipients = new LinkedHashMap<Long, UserEntity>();
         for (var recipient : recipients) {
-            if (recipient != null && !recipient.isDisabled()) {
+            if (recipient != null && !recipient.isDisabled() && recipient.canReceiveNotifications()) {
                 uniqueRecipients.put(recipient.id(), recipient);
             }
         }
@@ -44,6 +44,7 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public NotificationPageResponse listFor(UserEntity recipient, int page, int size, boolean unreadOnly) {
+        assertCanReceiveNotifications(recipient);
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("分页参数无效");
         }
@@ -56,11 +57,13 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public long unreadCount(UserEntity recipient) {
+        assertCanReceiveNotifications(recipient);
         return notifications.countByRecipient_IdAndReadAtIsNull(recipient.id());
     }
 
     @Transactional
     public NotificationResponse markRead(UserEntity recipient, Long notificationId) {
+        assertCanReceiveNotifications(recipient);
         var notification = notifications.findByIdAndRecipient_Id(notificationId, recipient.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "消息不存在"));
         notification.markRead();
@@ -69,7 +72,14 @@ public class NotificationService {
 
     @Transactional
     public void markAllRead(UserEntity recipient) {
+        assertCanReceiveNotifications(recipient);
         notifications.findByRecipient_IdAndReadAtIsNull(recipient.id())
                 .forEach(NotificationEntity::markRead);
+    }
+
+    private static void assertCanReceiveNotifications(UserEntity recipient) {
+        if (!recipient.canReceiveNotifications()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "普通用户不可使用站内消息");
+        }
     }
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Button, Card, Form, FormItem, Input, Modal, Result, Select, Space, Spin, Tag, Timeline, TimelineItem, message } from 'ant-design-vue'
+import { Button, Card, Form, FormItem, Input, Modal, Result, Select, Space, Tag, Timeline, TimelineItem, message } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { requirementStatusMeta, requirementStatusOptions, saveTypeMeta } from '../constants/statusConfig'
@@ -8,6 +8,9 @@ import { urgencyMeta } from '../constants/urgencyConfig'
 import { markChanged } from '../composables/refreshBus'
 import { useApiError } from '../composables/useApiError'
 import { apiErrorDetails } from '../composables/useApiError'
+import { useAuth } from '../composables/useAuth'
+import { usePageRefresh } from '../composables/usePageRefresh'
+import ContentSkeleton from './ContentSkeleton.vue'
 import RequirementEditor from './RequirementEditor.vue'
 
 type SystemItem = { id: number; name: string; ownerName?: string | null }
@@ -33,6 +36,8 @@ type Requirement = {
   submittedAt: string | null
   updatedAt?: string | null
   systemId: number | null
+  systemName?: string | null
+  systemOwnerName?: string | null
   targetVersionId: number | null
   targetVersionName?: string | null
   periodStartDate: string | null
@@ -61,12 +66,13 @@ const progresses = ref<Progress[]>([])
 const previewAttachment = ref<Attachment | null>(null)
 const loading = ref(true)
 const loadError = ref('')
-const editing = ref(false)
+const editing = computed(() => route.query.edit === '1')
 const progressModalOpen = ref(false)
 const progressLoading = ref(false)
 const progressForm = ref({ content: '', status: '' })
 const progressError = ref('')
 const { handleError } = useApiError()
+const { isHandler } = useAuth()
 let previewRefreshTimer: ReturnType<typeof setTimeout> | undefined
 
 const requirementId = computed(() => Number(route.params.id))
@@ -76,11 +82,15 @@ const previewOpen = computed({
 })
 const systemName = computed(() => {
   if (!requirement.value || requirement.value.systemId === null) return '暂无系统'
-  return systems.value.find((system) => system.id === requirement.value?.systemId)?.name ?? `系统 #${requirement.value.systemId}`
+  return requirement.value.systemName
+    ?? systems.value.find((system) => system.id === requirement.value?.systemId)?.name
+    ?? `系统 #${requirement.value.systemId}`
 })
 const systemOwnerName = computed(() => {
   if (!requirement.value || requirement.value.systemId === null) return '未设置'
-  return systems.value.find((system) => system.id === requirement.value?.systemId)?.ownerName || '未设置'
+  return requirement.value.systemOwnerName
+    ?? systems.value.find((system) => system.id === requirement.value?.systemId)?.ownerName
+    ?? '未设置'
 })
 const formatShanghai = (value: string | null | undefined) => {
   if (!value) return '—'
@@ -131,10 +141,13 @@ const loadRequirement = async () => {
   loadError.value = ''
   clearPreviewRefresh()
   try {
+    const systemRequest = isHandler.value
+      ? api.get('/systems')
+      : Promise.resolve({ data: [] as SystemItem[] })
     const [detail, attachmentList, systemList, progressList] = await Promise.all([
       api.get(`/requirements/${requirementId.value}`),
       api.get(`/requirements/${requirementId.value}/attachments`),
-      api.get('/systems'),
+      systemRequest,
       api.get(`/requirements/${requirementId.value}/progresses`),
     ])
     requirement.value = detail.data
@@ -143,11 +156,11 @@ const loadRequirement = async () => {
     progresses.value = Array.isArray(progressList.data) ? progressList.data : []
     schedulePreviewRefresh()
   } catch (error: unknown) {
-    requirement.value = null
-    attachments.value = []
-    progresses.value = []
     const status = (error as { response?: { status?: number } }).response?.status
-    loadError.value = status === 404 ? '该需求不存在或已被删除' : '加载需求详情失败，请稍后重试'
+    if (!requirement.value) {
+      loadError.value = status === 404 ? '该需求不存在或已被删除' : '加载需求详情失败，请稍后重试'
+    }
+    throw error
   } finally {
     loading.value = false
   }
@@ -175,21 +188,17 @@ const retryAttachmentPreview = async (attachment: Attachment) => {
 const returnToList = () => {
   void router.push({ name: 'requirement-list' })
 }
-const setEditQuery = (enabled: boolean) => {
+const setEditQuery = async (enabled: boolean) => {
   const query = { ...route.query }
   if (enabled) query.edit = '1'
   else delete query.edit
-  void router.replace({ name: 'requirement-detail', params: { id: requirementId.value }, query })
+  await router.replace({ name: 'requirement-detail', params: { id: requirementId.value }, query })
 }
 const finishEditing = () => {
-  editing.value = false
-  setEditQuery(false)
-  void loadRequirement()
+  void setEditQuery(false)
 }
 const cancelEditing = () => {
-  editing.value = false
-  setEditQuery(false)
-  void loadRequirement()
+  void setEditQuery(false)
 }
 const openProgressUpdate = () => {
   progressForm.value = { content: '', status: '' }
@@ -214,8 +223,8 @@ const saveProgressUpdate = async () => {
     })
     progressModalOpen.value = false
     message.success('进展已更新')
-    markChanged(['requirements', 'dashboard'])
-    await loadRequirement()
+    markChanged(['requirements', 'dashboard', 'overview'])
+    await refresh()
   } catch (error: unknown) {
     progressError.value = apiErrorDetails(error).fieldErrors.content || ''
     handleError(error, '更新进度失败，请稍后重试')
@@ -224,28 +233,29 @@ const saveProgressUpdate = async () => {
   }
 }
 
+// 直达编辑路由由编辑器独立加载，避免先加载详情再加载编辑数据造成连续刷新。
+const { loaded, refresh } = usePageRefresh('requirementDetail', loadRequirement, { isPaused: () => editing.value })
+
 watch(() => route.params.id, () => {
-  editing.value = route.query.edit === '1'
-  void loadRequirement()
-}, { immediate: true })
-watch(() => route.query.edit, (value, previousValue) => {
-  if (value === previousValue || !requirement.value) return
-  editing.value = value === '1'
+  if (!editing.value && loaded.value) void refresh()
+})
+watch(editing, (isEditing, wasEditing) => {
+  if (!isEditing && wasEditing) void refresh()
 })
 onBeforeUnmount(clearPreviewRefresh)
 </script>
 
 <template>
   <section class="requirement-detail-page" data-test="requirement-detail-page">
-    <Spin :spinning="loading" tip="正在加载需求详情…">
+    <RequirementEditor v-if="editing" :key="requirementId" :requirement-id="requirementId" @cancel="cancelEditing" @return-list="returnToList" @saved="finishEditing" />
+
+    <ContentSkeleton v-else-if="!loaded && !loadError" preset="detail" :rows="6" />
+    <template v-else>
       <Result v-if="loadError" status="error" :title="loadError">
         <template #extra><Button type="primary" @click="returnToList">返回需求列表</Button></template>
       </Result>
 
-      <Card v-else-if="requirement" :bordered="false" class="requirement-detail-card">
-        <RequirementEditor v-if="editing" :key="requirement.id" :requirement-id="requirement.id" @cancel="cancelEditing" @saved="finishEditing" />
-
-        <template v-else>
+      <Card v-else-if="requirement" :bordered="false" class="requirement-detail-card" :class="{ 'is-detail-loading': loading }">
           <section class="detail-hero" data-test="detail-core-fields">
             <span class="detail-hero-label">需求标题</span>
             <div class="detail-hero-title-row">
@@ -290,7 +300,7 @@ onBeforeUnmount(clearPreviewRefresh)
           <section class="detail-section" data-test="progress-timeline-section">
             <div class="detail-section-heading">
               <h2>进展记录</h2>
-              <Button type="primary" data-test="open-progress-update" @click="openProgressUpdate">更新进度</Button>
+              <Button v-if="isHandler" type="primary" data-test="open-progress-update" @click="openProgressUpdate">更新进度</Button>
             </div>
             <Timeline v-if="progresses.length" class="progress-timeline">
               <TimelineItem v-for="progress in progresses" :key="progress.id">
@@ -327,9 +337,8 @@ onBeforeUnmount(clearPreviewRefresh)
             </ul>
             <p v-else class="detail-empty">无附件</p>
           </section>
-        </template>
       </Card>
-    </Spin>
+    </template>
 
     <Modal v-model:open="previewOpen" :title="previewAttachment?.originalName" :footer="null" destroy-on-close :get-container="false" width="1100px" wrap-class-name="attachment-preview-modal">
       <section v-if="previewAttachment" class="attachment-preview-dialog" data-test="attachment-preview-dialog">
@@ -368,6 +377,12 @@ onBeforeUnmount(clearPreviewRefresh)
 
 .requirement-detail-card :deep(.ant-card-body) {
   padding: 0;
+}
+
+.requirement-detail-card.is-detail-loading {
+  opacity: .55;
+  pointer-events: none;
+  transition: opacity .25s ease;
 }
 
 .detail-hero {

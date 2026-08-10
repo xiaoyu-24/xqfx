@@ -13,9 +13,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import javax.net.ssl.SSLHandshakeException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -69,6 +69,8 @@ class AiAnalysisService {
             return parseAndValidate(responseContent, departments, types);
         } catch (AiAnalysisException e) {
             throw e;
+        } catch (SSLHandshakeException e) {
+            throw new AiAnalysisException("无法与 AI 服务建立安全连接，请确认 AI Base URL 的 HTTP/HTTPS 协议正确，且服务端支持 TLS 1.2");
         } catch (Exception e) {
             throw new AiAnalysisException("AI 分析失败：" + e.getMessage());
         }
@@ -137,11 +139,8 @@ class AiAnalysisService {
             requestBuilder.header("Authorization", "Bearer " + apiKey);
         }
 
-        var client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(requestTimeoutSeconds))
-                .build();
-
-        var response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+        var response = AiHttpClientFactory.send(
+                requestBuilder.build(), HttpResponse.BodyHandlers.ofString(), requestTimeoutSeconds);
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new AiAnalysisException("AI 服务返回错误，状态码：" + response.statusCode());
         }

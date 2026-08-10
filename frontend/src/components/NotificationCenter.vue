@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Button, Card, Empty, Pagination, Segmented, Tag, message } from 'ant-design-vue'
 import { BellOutlined, CheckOutlined, ClockCircleOutlined, ExclamationCircleOutlined, FileTextOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { useNotifications } from '../composables/useNotifications'
+import { usePageRefresh } from '../composables/usePageRefresh'
+import ContentSkeleton from './ContentSkeleton.vue'
 
 type NotificationType = 'NEW_REQUIREMENT' | 'ASSIGNED' | 'STATUS_CHANGED' | 'OVERDUE' | 'STALE'
 type NotificationItem = {
@@ -58,8 +60,8 @@ const loadNotifications = async () => {
     })
     items.value = Array.isArray(data.content) ? data.content : []
     total.value = data.totalElements ?? 0
-  } catch {
-    message.error('加载站内消息失败')
+  } catch (error) {
+    throw error
   } finally {
     loading.value = false
   }
@@ -67,7 +69,7 @@ const loadNotifications = async () => {
 
 const changePage = (current: number) => {
   page.value = current - 1
-  void loadNotifications()
+  void refresh()
 }
 
 const openNotification = async (item: NotificationItem) => {
@@ -107,17 +109,19 @@ const markAllRead = async () => {
 
 watch(filter, () => {
   page.value = 0
-  void loadNotifications()
+  void refresh()
 })
 
-onMounted(() => {
-  void loadNotifications()
-  void refreshUnreadCount()
+const { loaded, refresh } = usePageRefresh('notifications', async () => {
+  await loadNotifications()
+  await refreshUnreadCount()
 })
 </script>
 
 <template>
   <section class="notification-center" data-test="notification-center">
+    <ContentSkeleton v-if="!loaded" preset="table" :rows="5" />
+    <template v-else>
     <Card :bordered="false">
       <div class="notification-toolbar">
         <Segmented v-model:value="filter" :options="filterOptions" data-test="notification-filter" />
@@ -157,6 +161,7 @@ onMounted(() => {
         <Pagination :current="page + 1" :page-size="pageSize" :total="total" :show-size-changer="false" @change="changePage" />
       </div>
     </Card>
+    </template>
   </section>
 </template>
 

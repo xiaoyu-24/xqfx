@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>人员管理（三角色）· 视觉设计稿</title>
+  <style>
+    :root {
+      --primary: #1677ff;
+      --primary-hover: #4096ff;
+      --primary-light: #e6f4ff;
+      --text-1: #262626;
+      --text-2: #595959;
+      --text-3: #8c8c8c;
+      --border: #f0f0f0;
+      --border-strong: #d9d9d9;
+      --border-light: #e8e8e8;
+      --bg-page: #f5f7fa;
+      --danger: #ff4d4f;
+      --radius: 10px;
+      --shadow-card: 0 1px 2px rgba(0,0,0,.03), 0 4px 16px rgba(0,0,0,.04);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 14px;
+      color: var(--text-1);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1080px; background: var(--bg-page); }
+    button { font: inherit; cursor: pointer; border: none; background: none; }
+    .app { min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── 顶部导航 ───────────────────────────── */
+    .topbar {
+      height: 60px; display: flex; align-items: center; padding: 0 28px;
+      background: #fff; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: .5px; }
+    .brand-mark {
+      width: 30px; height: 30px; display: grid; place-items: center;
+      border-radius: 8px; color: #fff; font-size: 16px;
+      background: linear-gradient(135deg, #1677ff, #69b1ff);
+      box-shadow: 0 2px 6px rgba(22,119,255,.3);
+    }
+    .search {
+      width: 340px; height: 34px; margin-left: auto; display: flex; align-items: center;
+      border: 1px solid var(--border-light); border-radius: 17px; background: #fafafa; color: var(--text-3);
+    }
+    .search span { padding: 0 14px; flex: 1; font-size: 13px; }
+    .search i { width: 38px; height: 32px; display: grid; place-items: center; font-style: normal; font-size: 15px; color: var(--text-3); }
+    .user { display: flex; align-items: center; gap: 10px; margin-left: 26px; padding-left: 22px; border-left: 1px solid var(--border); }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+      background: linear-gradient(135deg, #1677ff, #91caff); color: #fff; font-size: 13px; font-weight: 600;
+    }
+    .user-meta { display: flex; flex-direction: column; line-height: 1.3; }
+    .user-meta strong { font-size: 13px; }
+    .user-meta em { color: var(--text-3); font-size: 11px; font-style: normal; }
+    .logout { margin-left: 18px; color: var(--text-2); font-size: 13px; cursor: pointer; }
+    .logout:hover { color: var(--primary); }
+
+    /* ── 侧边栏 ─────────────────────────────── */
+    .layout { flex: 1; display: flex; }
+    .sidebar { width: 216px; flex-shrink: 0; padding: 16px 12px; background: #fff; border-right: 1px solid var(--border); }
+    .nav-item {
+      height: 42px; display: flex; align-items: center; gap: 12px; padding: 0 16px;
+      margin-bottom: 4px; border-radius: 8px; color: var(--text-2); font-size: 14px;
+      transition: background .15s, color .15s; cursor: pointer;
+    }
+    .nav-item:hover { background: #f5f5f5; color: var(--text-1); }
+    .nav-item.active { color: var(--primary); background: var(--primary-light); font-weight: 600; }
+    .nav-icon { width: 18px; text-align: center; color: var(--text-3); font-size: 15px; }
+    .nav-item.active .nav-icon { color: var(--primary); }
+
+    /* ── 主内容区 ────────────────────────────── */
+    main { flex: 1; min-width: 0; padding: 24px 32px 48px; }
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+    .page-title { margin: 0; font-size: 22px; line-height: 1.35; font-weight: 700; }
+    .page-sub { margin: 6px 0 0; color: var(--text-3); font-size: 13px; }
+
+    .btn {
+      height: 34px; padding: 0 16px; border: 1px solid var(--border-strong); border-radius: 8px;
+      background: #fff; color: var(--text-1); font-size: 14px;
+      transition: all .2s; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn:hover { border-color: var(--primary); color: var(--primary); }
+    .btn.primary { border-color: var(--primary); background: var(--primary); color: #fff; box-shadow: 0 2px 6px rgba(22,119,255,.25); }
+    .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+    .btn.small { height: 30px; padding: 0 12px; font-size: 13px; }
+
+    /* ── 人员列表卡片 ────────────────────────── */
+    .surface { border-radius: var(--radius); background: #fff; box-shadow: var(--shadow-card); overflow: hidden; }
+    .panel-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #fafcff, #fff);
+    }
+    .panel-title { margin: 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .panel-title::before { content: ""; width: 3px; height: 14px; border-radius: 2px; background: var(--primary); }
+    .panel-title .count { font-size: 12px; font-weight: 500; color: var(--text-3); }
+
+    .toolbar { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .filter-input {
+      height: 32px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 8px;
+      background: #fff; color: var(--text-2); font-size: 13px; display: flex; align-items: center; gap: 8px;
+      transition: border-color .2s; cursor: pointer;
+    }
+    .filter-input:hover { border-color: var(--primary-hover); }
+    .filter-input .placeholder, .filter-input .arrow { color: #bfbfbf; font-size: 12px; }
+    .filter-input.wide { width: 200px; }
+
+    /* 表格 */
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 12px 16px; text-align: left; font-size: 13px; font-weight: 600; color: var(--text-2);
+      background: #fafbfc; border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    tbody td { padding: 13px 16px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+    tbody tr { transition: background .15s; }
+    tbody tr:hover { background: #fafcff; }
+    tbody tr:last-child td { border-bottom: none; }
+    .u-cell { display: flex; align-items: center; gap: 10px; }
+    .u-avatar {
+      width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0;
+      background: var(--primary-light); color: var(--primary); font-size: 12px; font-weight: 600;
+    }
+    .u-name { font-weight: 500; }
+    .u-username { color: var(--text-3); font-size: 12px; }
+
+    .tag {
+      display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px;
+      border-radius: 11px; font-size: 12px; font-weight: 500; border: 1px solid transparent; white-space: nowrap;
+    }
+    .tag .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .tag.admin { color: var(--primary); background: var(--primary-light); border-color: #91caff; }
+    .tag.handler { color: #d46b08; background: #fff7e6; border-color: #ffd591; }
+    .tag.normal { color: var(--text-2); background: #f5f5f5; border-color: var(--border-light); }
+    .tag.ok { color: #389e0d; background: #f6ffed; border-color: #b7eb8f; }
+    .tag.warn { color: #d46b08; background: #fff7e6; border-color: #ffd591; }
+    .tag.off { color: var(--text-3); background: #f5f5f5; border-color: var(--border-light); }
+
+    .link-btn { padding: 2px 8px; color: var(--primary); font-size: 13px; border-radius: 6px; white-space: nowrap; }
+    .link-btn:hover { background: var(--primary-light); }
+    .link-btn.danger { color: var(--danger); }
+    .link-btn.danger:hover { background: #fff1f0; }
+
+    /* ── 新增/编辑人员弹窗示意 ─────────────────��─ */
+    .modal-mask {
+      margin: 28px 0 0; border: 1px dashed var(--border-strong); border-radius: 12px;
+      background: #fcfcfd; padding: 22px 24px;
+    }
+    .modal-demo-title { margin: 0 0 4px; font-size: 13px; color: var(--text-3); }
+    .modal-card {
+      max-width: 520px; margin: 12px auto 0; background: #fff; border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.12); overflow: hidden;
+    }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); font-weight: 600; }
+    .modal-close { color: var(--text-3); cursor: pointer; }
+    .modal-body { padding: 20px; }
+    .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border); background: #fafbfc; }
+    .field { margin-bottom: 16px; }
+    .field:last-child { margin-bottom: 0; }
+    .field-label { display: flex; gap: 4px; margin-bottom: 8px; color: var(--text-2); font-size: 13px; font-weight: 500; }
+    .field-label .req { color: var(--danger); }
+    .control {
+      width: 100%; height: 36px; padding: 0 12px;
+      border: 1px solid var(--border-strong); border-radius: 8px;
+      background: #fff; font-size: 14px; display: flex; align-items: center;
+    }
+    .control .arrow { margin-left: auto; color: var(--text-3); font-size: 11px; }
+
+    /* 角色三选卡片 */
+    .role-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .role-option {
+      padding: 12px 12px 10px; border: 1.5px solid var(--border-light); border-radius: 10px;
+      cursor: pointer; transition: border-color .2s, box-shadow .2s, background .2s;
+    }
+    .role-option:hover { border-color: #91caff; }
+    .role-option.selected { border-color: var(--primary); background: #f7fbff; box-shadow: 0 2px 8px rgba(22,119,255,.12); }
+    .role-option .ro-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .role-option .ro-name .radio {
+      width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-strong); flex-shrink: 0;
+      display: grid; place-items: center;
+    }
+    .role-option.selected .ro-name .radio { border-color: var(--primary); }
+    .role-option.selected .ro-name .radio::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); }
+    .role-option .ro-desc { margin-top: 6px; color: var(--text-3); font-size: 11.5px; line-height: 1.6; }
+    .role-hint { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: #fff7e6; border: 1px solid #ffd591; color: #d46b08; font-size: 12px; }
+
+    @media (max-width: 900px) {
+      body { min-width: 0; }
+      .sidebar { width: 188px; }
+      main { padding: 20px; }
+      .search { width: 240px; }
+    }
+    @media (max-width: 680px) {
+      .topbar { padding: 0 16px; }
+      .search, .user-meta em { display: none; }
+      .user { margin-left: auto; }
+      .sidebar { display: none; }
+      .page-header { flex-direction: column; }
+      .role-picker { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">▦</span><span>需求分析平台</span></div>
+      <div class="search"><span>搜索需求</span><i>⌕</i></div>
+      <div class="user">
+        <span class="avatar">管</span>
+        <span class="user-meta"><strong>系统管理员</strong><em>管理员</em></span>
+      </div>
+      <span class="logout">↪ 退出</span>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="nav-item"><span class="nav-icon">◉</span><span>待办工作台</span></div>
+        <div class="nav-item"><span class="nav-icon">▤</span><span>填写需求</span></div>
+        <div class="nav-item"><span class="nav-icon">☷</span><span>需求列表</span></div>
+        <div class="nav-item"><span class="nav-icon">⚙</span><span>系统管理</span></div>
+        <div class="nav-item active"><span class="nav-icon">♧</span><span>人员管理</span></div>
+        <div class="nav-item"><span class="nav-icon">▣</span><span>字典管理</span></div>
+        <div class="nav-item"><span class="nav-icon">▤</span><span>AI 配置</span></div>
+      </aside>
+      <main>
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">人员管理</h1>
+            <p class="page-sub">维护账号与角色；仅需求处理员和管理员可担任系统负责人</p>
+          </div>
+          <button class="btn primary">＋ 新增人员</button>
+        </div>
+
+        <!-- 人员列表 -->
+        <section class="surface">
+          <div class="panel-head">
+            <h3 class="panel-title">人员列表 <span class="count">共 19 人</span></h3>
+          </div>
+          <div class="toolbar">
+            <span class="filter-input wide"><span class="placeholder">按账号 / 姓名筛选</span></span>
+            <span class="filter-input"><span>全部角色</span><span class="arrow">▼</span></span>
+            <span class="filter-input"><span>全部状态</span><span class="arrow">▼</span></span>
+          </div>
+          <table>
+            <thead>
+              <tr><th>人员</th><th>部门</th><th>角色</th><th>状态</th><th style="width:260px">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="u-cell"><span class="u-avatar">管</span><span><span class="u-name">系统管理员</span><br><span class="u-username">admin</span></span></div></td>
+                <td>IT部</td>
+                <td><span class="tag admin"><span class="dot"></span>管理员</span></td>
+                <td><span class="tag ok"><span class="dot"></span>正常</span></td>
+                <td>
+                  <button class="link-btn">编辑</button>
+                  <button class="link-btn">重置密码</button>
+                  <button class="link-btn danger">停用</button>
+                </td>
+              </tr>
+              <tr>
+                <td><div class="u-cell"><span class="u-avatar">王</span><span><span class="u-name">王小明</span><br><span class="u-username">wang</span></span></div></td>
+                <td>IT部</td>
+                <td><span class="tag handler"><span class="dot"></span>需求处理员</span></td>
+                <td><span class="tag ok"><span class="dot"></span>正常</span></td>
+                <td>
+                  <button class="link-btn">编辑</button>
+                  <button class="link-btn">重置密码</button>
+                  <button class="link-btn danger">停用</button>
+                </td>
+              </tr>
+              <tr>
+                <td><div class="u-cell"><span class="u-avatar">肖</span><span><span class="u-name">肖晓</span><br><span class="u-username">xiao</span></span></div></td>
+                <td>IT部</td>
+                <td><span class="tag handler"><span class="dot"></span>需求处理员</span></td>
+                <td><span class="tag warn"><span class="dot"></span>需改密</span></td>
+                <td>
+                  <button class="link-btn">编辑</button>
+                  <button class="link-btn">重置密码</button>
+                  <button class="link-btn danger">停用</button>
+                </td>
+              </tr>
+              <tr>
+                <td><div class="u-cell"><span class="u-avatar">陈</span><span><span class="u-name">陈静</span><br><span class="u-username">chen</span></span></div></td>
+                <td>客服部</td>
+                <td><span class="tag normal"><span class="dot"></span>普通用户</span></td>
+                <td><span class="tag ok"><span class="dot"></span>正常</span></td>
+                <td>
+                  <button class="link-btn">编辑</button>
+                  <button class="link-btn">重置密码</button>
+                  <button class="link-btn danger">停用</button>
+                </td>
+              </tr>
+              <tr>
+                <td><div class="u-cell"><span class="u-avatar">刘</span><span><span class="u-name">刘洋</span><br><span class="u-username">liu</span></span></div></td>
+                <td>运营部</td>
+                <td><span class="tag normal"><span class="dot"></span>普通用户</span></td>
+                <td><span class="tag off"><span class="dot"></span>已停用</span></td>
+                <td>
+                  <button class="link-btn">编辑</button>
+                  <button class="link-btn">重置密码</button>
+                  <button class="link-btn">启用</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- 弹窗样式示意 -->
+        <div class="modal-mask">
+          <p class="modal-demo-title">弹窗样式示意 —— 「新增 / 编辑人员」，角色由开关改为三选卡片</p>
+          <div class="modal-card">
+            <div class="modal-head"><span>新增人员</span><span class="modal-close">✕</span></div>
+            <div class="modal-body">
+              <div class="field">
+                <label class="field-label"><span class="req">*</span>账号</label>
+                <div class="control"><span>zhang</span></div>
+              </div>
+              <div class="field">
+                <label class="field-label"><span class="req">*</span>姓名</label>
+                <div class="control"><span>张岚</span></div>
+              </div>
+              <div class="field">
+                <label class="field-label">部门</label>
+                <div class="control"><span>客服部</span><span class="arrow">▼</span></div>
+              </div>
+              <div class="field">
+                <label class="field-label"><span class="req">*</span>角色</label>
+                <div class="role-picker">
+                  <div class="role-option">
+                    <div class="ro-name"><span class="radio"></span>普通用户</div>
+                    <div class="ro-desc">仅填写和跟进自己的需求</div>
+                  </div>
+                  <div class="role-option selected">
+                    <div class="ro-name"><span class="radio"></span>需求处理员</div>
+                    <div class="ro-desc">处理全部需求，可任系统负责人</div>
+                  </div>
+                  <div class="role-option">
+                    <div class="ro-name"><span class="radio"></span>管理员</div>
+                    <div class="ro-desc">含人员、字典、AI 配置管理</div>
+                  </div>
+                </div>
+                <p class="role-hint">注意：将普通用户调整为需求处理员后，该账号即可被设为系统负责人，并可查看、编辑全部需求。</p>
+              </div>
+            </div>
+            <div class="modal-foot">
+              <button class="btn">取消</button>
+              <button class="btn primary">保存</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

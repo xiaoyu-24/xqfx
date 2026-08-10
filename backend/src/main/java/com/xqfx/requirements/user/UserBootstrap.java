@@ -35,7 +35,7 @@ class UserBootstrap {
         var password = configuredPassword == null || configuredPassword.isBlank()
                 ? randomPassword()
                 : configuredPassword;
-        var admin = new UserEntity("admin", authService.encodePassword(password), "系统管理员", null, true);
+        var admin = new UserEntity("admin", authService.encodePassword(password), "系统管理员", null, UserRole.ADMIN);
         repository.save(admin);
 
         if (configuredPassword == null || configuredPassword.isBlank()) {

@@ -54,7 +54,7 @@ class RequirementController {
     List<RequirementResponse> list(@RequestParam(required = false) Long typeId,
                                    @RequestParam(required = false) Long systemId,
                                    @RequestParam(required = false) RequirementSaveType saveType) {
-        return service.list(typeId, systemId, saveType);
+        return service.list(CurrentUser.require(), typeId, systemId, saveType);
     }
 
     @GetMapping("/page")
@@ -72,23 +72,23 @@ class RequirementController {
                                  @RequestParam(required = false) String keyword,
                                  @RequestParam(required = false) String sortBy,
                                  @RequestParam(required = false) String sortDirection) {
-        return service.page(page, size, systemId, unassignedSystem, targetVersionId, departmentId, requesterName,
+        return service.page(CurrentUser.require(), page, size, systemId, unassignedSystem, targetVersionId, departmentId, requesterName,
                 typeId, status, saveType, unfinishedOnly, keyword, sortBy, sortDirection);
     }
 
     @GetMapping("/{id:\\d+}")
     RequirementResponse get(@PathVariable Long id) {
-        return service.get(id);
+        return service.get(id, CurrentUser.require());
     }
 
     @GetMapping("/{id:\\d+}/attachments")
     List<AttachmentResponse> attachments(@PathVariable Long id) {
-        return attachments.list(id);
+        return attachments.list(id, CurrentUser.require());
     }
 
     @GetMapping("/{id:\\d+}/progresses")
     List<RequirementProgressResponse> progresses(@PathVariable Long id) {
-        return service.progresses(id);
+        return service.progresses(id, CurrentUser.require());
     }
 
     @PostMapping("/{id:\\d+}/progresses")
@@ -105,7 +105,7 @@ class RequirementController {
 
     @PutMapping("/{id:\\d+}/draft")
     RequirementResponse updateDraft(@PathVariable Long id, @RequestBody DraftRequirementRequest request) {
-        return service.updateDraft(id, request.requesterName(), request.departmentId(), request.title(), request.typeId(),
+        return service.updateDraft(id, CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
                 request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
                 request.periodEndDate(), request.urgency(), request.recordVersion());
     }
@@ -120,14 +120,14 @@ class RequirementController {
     @DeleteMapping("/{id:\\d+}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void delete(@PathVariable Long id) {
-        service.delete(id);
+        service.delete(id, CurrentUser.require());
     }
 
     @PostMapping("/{id:\\d+}/attachments")
     @ResponseStatus(HttpStatus.CREATED)
     AttachmentResponse upload(@PathVariable Long id,
                               @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
-        return attachments.upload(id, file);
+        return attachments.upload(id, CurrentUser.require(), file);
     }
 
     record CreateProgressRequest(@NotBlank(message = "请输入进展内容") String content, RequirementStatus status,

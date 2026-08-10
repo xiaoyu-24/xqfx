@@ -14,5 +14,5 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
 
     List<UserEntity> findByDisabledFalseOrderByDisplayNameAsc();
 
-    List<UserEntity> findByDisabledFalseAndAdminRoleTrueOrderByDisplayNameAsc();
+    List<UserEntity> findByDisabledFalseAndRoleInOrderByDisplayNameAsc(List<UserRole> roles);
 }

@@ -60,6 +60,9 @@ class RequirementService {
         if (systemId != null && newSystemName != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能同时选择已有系统和新系统");
         }
+        if (newSystemName != null && requester.role() == com.xqfx.requirements.user.UserRole.USER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "普通用户不能创建系统");
+        }
 
         var system = newSystemName == null
                 ? (systemId == null ? null : findSystem(systemId))
@@ -96,7 +99,7 @@ class RequirementService {
     }
 
     @Transactional(readOnly = true)
-    List<RequirementResponse> list(Long typeId, Long systemId, RequirementSaveType saveType) {
+    List<RequirementResponse> list(UserEntity actor, Long typeId, Long systemId, RequirementSaveType saveType) {
         var items = saveType != null
                 ? requirements.findBySaveTypeAndDeletedFalse(saveType)
                 : (systemId != null
@@ -104,29 +107,36 @@ class RequirementService {
                         : (typeId != null
                                 ? requirements.findByType_IdAndDeletedFalse(typeId)
                                 : requirements.findAllByDeletedFalse()));
-        return items.stream().map(RequirementResponse::from).toList();
+        return items.stream()
+                .filter(item -> actor.isHandler() || owns(item, actor))
+                .map(RequirementResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)
-    RequirementPageResponse page(int page, int size, Long systemId, boolean unassignedSystem,
+    RequirementPageResponse page(UserEntity actor, int page, int size, Long systemId, boolean unassignedSystem,
                                  Long targetVersionId, Long departmentId, String requesterName, Long typeId,
                                  RequirementStatus status, RequirementSaveType saveType, boolean unfinishedOnly, String keyword,
                                  String sortBy, String sortDirection) {
         validatePageFilter(page, size, systemId, unassignedSystem);
         return RequirementPageResponse.from(requirements.findAll(
                 RequirementSpecifications.filtered(systemId, unassignedSystem, targetVersionId, departmentId,
-                        requesterName, typeId, status, saveType, keyword, unfinishedOnly, sortBy, sortDirection),
+                        requesterName, typeId, status, saveType, keyword, unfinishedOnly, sortBy, sortDirection,
+                        actor.isHandler() ? null : actor.id()),
                 PageRequest.of(page, size)));
     }
 
     @Transactional(readOnly = true)
-    RequirementResponse get(Long id) {
-        return RequirementResponse.from(findActive(id));
+    RequirementResponse get(Long id, UserEntity actor) {
+        var requirement = findActive(id);
+        assertCanView(requirement, actor);
+        return RequirementResponse.from(requirement);
     }
 
     @Transactional(readOnly = true)
-    List<RequirementProgressResponse> progresses(Long id) {
-        findActive(id);
+    List<RequirementProgressResponse> progresses(Long id, UserEntity actor) {
+        var requirement = findActive(id);
+        assertCanView(requirement, actor);
         return progresses.findByRequirement_IdOrderByCreatedAtAscIdAsc(id).stream()
                 .map(RequirementProgressResponse::from)
                 .toList();
@@ -134,6 +144,7 @@ class RequirementService {
 
     @Transactional
     RequirementProgressResponse addProgress(Long id, UserEntity author, String content, RequirementStatus status, Long recordVersion) {
+        assertCanHandle(author);
         var requirement = findActive(id);
         var statusChanged = status != null && status != requirement.status();
         if (statusChanged) {
@@ -150,10 +161,11 @@ class RequirementService {
     }
 
     @Transactional
-    RequirementResponse updateDraft(Long id, String requesterName, Long departmentId, String title, Long typeId,
+    RequirementResponse updateDraft(Long id, UserEntity actor, String requesterName, Long departmentId, String title, Long typeId,
                                     String content, Long systemId, Long targetVersionId,
                                     LocalDate start, LocalDate end, RequirementUrgency urgency, Long recordVersion) {
         var requirement = findActive(id);
+        assertCanEdit(requirement, actor);
         assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
         if (!requirement.isDraft()) {
             throw new IllegalArgumentException("只有草稿可以暂存更新");
@@ -176,6 +188,7 @@ class RequirementService {
                                String content, Long systemId, Long targetVersionId,
                                LocalDate start, LocalDate end, RequirementUrgency urgency, Long recordVersion) {
         var requirement = findActive(id);
+        assertCanEdit(requirement, actor);
         var submittingDraft = requirement.isDraft();
         assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
         var department = resolveForUpdate(departmentId, requirement.department(),
@@ -207,6 +220,7 @@ class RequirementService {
 
     @Transactional
     RequirementResponse assign(Long id, Long assigneeUserId, Long recordVersion, UserEntity actor) {
+        assertCanHandle(actor);
         var requirement = findActive(id);
         assertRecordVersion(requirement.recordVersion(), recordVersion, "需求已被其他人修改，请刷新后重试");
         var assignee = assigneeUserId == null ? null : findEnabledUser(assigneeUserId);
@@ -223,8 +237,13 @@ class RequirementService {
     }
 
     @Transactional
-    void delete(Long id) {
-        findActive(id).delete();
+    void delete(Long id, UserEntity actor) {
+        var requirement = findActive(id);
+        assertCanEdit(requirement, actor);
+        if (!actor.isHandler() && !requirement.isDraft() && requirement.status() != RequirementStatus.PENDING_EVALUATION) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "普通用户只能删除草稿或待评估需求");
+        }
+        requirement.delete();
     }
 
     private DictionaryItemEntity resolveOptionalActive(Long id, DictionaryCategory category, String label) {
@@ -265,7 +284,37 @@ class RequirementService {
         if (user.isDisabled()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "用户已停用，不能指派");
         }
+        if (!user.isHandler()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "需求处理人必须是需求处理员或管理员");
+        }
         return user;
+    }
+
+    private static boolean owns(RequirementEntity requirement, UserEntity actor) {
+        return requirement.requesterUser() != null && requirement.requesterUser().id().equals(actor.id());
+    }
+
+    private static void assertCanView(RequirementEntity requirement, UserEntity actor) {
+        if (!actor.isHandler() && !owns(requirement, actor)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权查看该需求");
+        }
+    }
+
+    private static void assertCanEdit(RequirementEntity requirement, UserEntity actor) {
+        if (!actor.isHandler() && !owns(requirement, actor)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只能编辑自己填写的需求");
+        }
+        if (!actor.isHandler() && !requirement.isDraft()
+                && requirement.status() != RequirementStatus.PENDING_EVALUATION
+                && requirement.status() != RequirementStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "普通用户只能编辑待评估或已确认的需求");
+        }
+    }
+
+    private static void assertCanHandle(UserEntity actor) {
+        if (!actor.isHandler()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只有需求处理员或管理员可以执行该操作");
+        }
     }
 
     private SystemEntity createNewSystem(String name, Long ownerUserId, List<Long> collaboratorUserIds) {

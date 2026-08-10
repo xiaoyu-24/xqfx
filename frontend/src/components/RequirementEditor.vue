@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { Button, DatePicker, FormItem, Input, Modal, Result, Select, Space, Spin, message } from 'ant-design-vue'
-import { InboxOutlined } from '@ant-design/icons-vue'
+import { Button, DatePicker, FormItem, Input, Modal, Result, Select, Space, message } from 'ant-design-vue'
+import { InboxOutlined, InfoCircleOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
 import { markChanged } from '../composables/refreshBus'
 import { useApiError } from '../composables/useApiError'
 import { useFormErrors } from '../composables/useFormErrors'
 import { useDictionaryOptions, type DictionaryItem } from '../composables/useDictionaryOptions'
+import { useAuth } from '../composables/useAuth'
 import { urgencyOptions } from '../constants/urgencyConfig'
+import { usePageRefresh } from '../composables/usePageRefresh'
+import ContentSkeleton from './ContentSkeleton.vue'
 
 type SystemItem = { id: number; name: string; status: string }
 type VersionItem = { id: number; name: string; status: string }
@@ -27,10 +30,12 @@ type EditableRequirement = {
   typeId: number | null
   type: string | null
   requesterName: string | null
+  requesterUserId?: number | null
   departmentId: number | null
   department: string | null
   status: string | null
   systemId: number | null
+  systemName?: string | null
   targetVersionId: number | null
   periodStartDate: string | null
   periodEndDate: string | null
@@ -43,6 +48,7 @@ type EditableRequirement = {
 const props = defineProps<{ requirementId: number }>()
 const emit = defineEmits<{
   cancel: []
+  returnList: []
   saved: []
 }>()
 
@@ -64,11 +70,17 @@ const form = reactive({
 })
 const allowedAttachmentExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'])
 const { departments, requirementTypes, loadDictionaryOptions } = useDictionaryOptions()
+const { currentUser, isHandler } = useAuth()
 const { handleError } = useApiError()
 const { errors, clearErrors, setError, applyServerErrors } = useFormErrors()
 let previewRefreshTimer: ReturnType<typeof setTimeout> | undefined
 
 const isDraft = computed(() => saveType.value === 'DRAFT')
+const canEdit = computed(() => isHandler.value || (
+  requirement.value?.requesterUserId === currentUser.value?.id
+  && (isDraft.value || ['PENDING_EVALUATION', 'CONFIRMED'].includes(requirement.value?.status ?? ''))
+))
+const requirementCode = computed(() => `#REQ-${String(props.requirementId).padStart(6, '0')}`)
 const previewOpen = computed({
   get: () => previewAttachment.value !== null,
   set: (open: boolean) => { if (!open) previewAttachment.value = null },
@@ -91,14 +103,11 @@ const statusOptions = [
   { label: '已拒绝', value: 'REJECTED' },
   { label: '已关闭', value: 'CLOSED' },
 ]
-const systemOptions = computed(() => [
-  { label: '暂无系统', value: '' },
-  ...systems.value.map((system) => ({
+const systemOptions = computed(() => systems.value.map((system) => ({
     label: `${system.name}${system.status === 'ACTIVE' ? '' : '（已停用）'}`,
     value: String(system.id),
     disabled: system.status !== 'ACTIVE' && String(system.id) !== form.systemId,
-  })),
-])
+  })))
 const versionOptions = computed(() => [
   { label: '请选择版本（可选）', value: '' },
   ...versions.value.map((version) => ({
@@ -146,10 +155,11 @@ const loadEditor = async () => {
   loadError.value = ''
   clearPreviewRefresh()
   try {
+    const systemsRequest = api.get('/systems')
     const [detailResponse, attachmentResponse, systemsResponse] = await Promise.all([
       api.get(`/requirements/${props.requirementId}`),
       api.get(`/requirements/${props.requirementId}/attachments`),
-      api.get('/systems'),
+      systemsRequest,
       loadDictionaryOptions(),
     ])
     const detail = detailResponse.data as EditableRequirement
@@ -157,6 +167,10 @@ const loadEditor = async () => {
     systems.value = Array.isArray(systemsResponse.data) ? systemsResponse.data : []
     attachments.value = Array.isArray(attachmentResponse.data) ? attachmentResponse.data : []
     saveType.value = detail.saveType ?? 'SUBMITTED'
+    if (!canEdit.value) {
+      loadError.value = '当前状态不允许编辑该需求'
+      return
+    }
     Object.assign(form, {
       requesterName: detail.requesterName ?? '',
       departmentId: detail.departmentId == null ? '' : String(detail.departmentId),
@@ -177,6 +191,7 @@ const loadEditor = async () => {
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status
     loadError.value = status === 404 ? '该需求不存在或已被删除' : '加载编辑数据失败，请稍后重试'
+    throw error
   } finally {
     loading.value = false
   }
@@ -185,7 +200,7 @@ const loadEditor = async () => {
 const addFiles = (files: File[]) => {
   const accepted = files.filter((file) => {
     const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
-    return allowedAttachmentExtensions.has(extension) && file.size <= 100 * 1024 * 1024
+    return allowedAttachmentExtensions.has(extension) && file.size <= 20 * 1024 * 1024
   })
   selectedFiles.value = [
     ...selectedFiles.value,
@@ -215,7 +230,7 @@ const uploadAttachments = async () => {
     selectedFiles.value = []
     schedulePreviewRefresh()
     message.success('附件上传成功')
-    markChanged(['requirements', 'dashboard'])
+    markChanged(['requirements', 'dashboard', 'overview'])
   } catch {
     message.error('附件上传失败，未完成的文件可重新选择后上传')
   } finally {
@@ -233,7 +248,7 @@ const deleteAttachment = (attachment: Attachment) => {
     await api.delete(`/attachments/${attachment.id}`)
     attachments.value = attachments.value.filter((item) => item.id !== attachment.id)
     message.success('附件已删除')
-    markChanged(['requirements', 'dashboard'])
+    markChanged(['requirements', 'dashboard', 'overview'])
   } catch (error: unknown) {
     handleError(error, '删除附件失败，请稍后重试')
   }
@@ -303,7 +318,7 @@ const save = async (submitDraft = false) => {
     const path = isDraftSave ? `/requirements/${props.requirementId}/draft` : `/requirements/${props.requirementId}`
     await api.put(path, body)
     message.success(isDraftSave ? '草稿已更新' : submitDraft ? '草稿已正式提交' : '需求已更新')
-    markChanged(['requirements', 'dashboard'])
+    markChanged(['requirements', 'dashboard', 'overview'])
     emit('saved')
   } catch (error: unknown) {
     const details = applyServerErrors(error)
@@ -315,26 +330,51 @@ const save = async (submitDraft = false) => {
   }
 }
 
-watch(() => props.requirementId, () => { void loadEditor() }, { immediate: true })
+const { loaded, refresh, refreshing, lastUpdatedAt } = usePageRefresh('requirementEditor', loadEditor)
+const lastUpdatedLabel = computed(() => lastUpdatedAt.value
+  ? new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(lastUpdatedAt.value)
+  : '')
+watch(() => props.requirementId, () => {
+  if (loaded.value) void refresh()
+})
 onBeforeUnmount(clearPreviewRefresh)
 </script>
 
 <template>
   <section class="requirement-editor" data-test="requirement-editor">
-    <Result v-if="loadError" status="error" :title="loadError">
+    <Result v-if="loadError" data-test="edit-error" status="error" :title="loadError">
       <template #extra>
         <Space>
-          <Button type="primary" @click="loadEditor">重新加载</Button>
+          <Button type="primary" @click="refresh">重新加载</Button>
           <Button @click="emit('cancel')">取消</Button>
         </Space>
       </template>
     </Result>
 
-    <Spin v-else :spinning="loading" tip="正在加载编辑数据…">
-      <form v-if="!loading" class="requirement-editor-form" data-test="edit-form" @submit.prevent="save()">
+    <ContentSkeleton v-else-if="!loaded || loading" preset="form" :rows="8" />
+    <form v-else class="requirement-editor-form" data-test="edit-form" @submit.prevent="save()">
+        <nav class="editor-breadcrumb" aria-label="编辑需求导航">
+          <button type="button" @click="emit('returnList')">需求列表</button>
+          <span>/</span>
+          <button type="button" @click="emit('cancel')">需求详情</button>
+          <span>/</span>
+          <span>编辑需求</span>
+        </nav>
+        <header class="editor-page-header">
+          <div>
+            <h1>编辑需求 <span>{{ requirementCode }}</span></h1>
+            <p>修改需求信息，保存后即时生效</p>
+          </div>
+          <div class="editor-page-actions">
+            <span v-if="lastUpdatedLabel" class="editor-updated-at">更新于 {{ lastUpdatedLabel }}</span>
+            <Button class="editor-refresh-button" html-type="button" :loading="refreshing" title="刷新数据" aria-label="刷新数据" @click="refresh"><template #icon><ReloadOutlined /></template></Button>
+            <Button html-type="button" @click="emit('returnList')">返回列表</Button>
+            <Button html-type="button" @click="emit('cancel')">取消编辑</Button>
+          </div>
+        </header>
         <div class="editor-surface">
           <div class="editor-notice" data-test="edit-field-legend">
-            <span class="editor-notice-icon">ⓘ</span>
+            <InfoCircleOutlined class="editor-notice-icon" />
             <span>带 <span class="field-required">*</span> 的项目为必填项；草稿可暂存未完成内容，正式提交时必须填写完整。</span>
           </div>
           <div class="editor-grid">
@@ -344,7 +384,7 @@ onBeforeUnmount(clearPreviewRefresh)
             <FormItem label="类型" :required="!isDraft" :validate-status="errors.typeId ? 'error' : undefined" :help="errors.typeId"><Select v-model:value="form.typeId" :options="typeOptions" placeholder="请选择需求类型" /></FormItem>
             <FormItem label="紧急程度" :required="!isDraft" :validate-status="errors.urgency ? 'error' : undefined" :help="errors.urgency"><Select v-model:value="form.urgency" :options="urgencyOptions" placeholder="请选择紧急程度" /></FormItem>
             <FormItem class="disabled-field" label="当前状态"><Select v-model:value="form.status" data-test="edit-status" :options="statusOptions" disabled placeholder="提交后默认为待评估" /><template #extra>状态由流程流转自动更新，编辑时不可修改</template></FormItem>
-            <FormItem label="所属系统"><Select v-model:value="form.systemId" :options="systemOptions" placeholder="请选择所属系统" @change="changeSystem" /></FormItem>
+            <FormItem label="所属系统"><Select v-model:value="form.systemId" data-test="edit-system-select" :options="systemOptions" placeholder="请选择所属系统" @change="changeSystem" /></FormItem>
             <FormItem label="目标版本"><Select v-model:value="form.targetVersionId" :disabled="!form.systemId" :options="versionOptions" placeholder="请选择版本（可选）" /></FormItem>
             <FormItem data-test="edit-period-field" label="需求时间周期" :validate-status="errors.period ? 'error' : undefined" :help="errors.period"><div class="date-range"><DatePicker v-model:value="form.periodStartDate" value-format="YYYY-MM-DD" placeholder="开始日期" /><span>至</span><DatePicker v-model:value="form.periodEndDate" value-format="YYYY-MM-DD" placeholder="结束日期" /></div></FormItem>
             <FormItem class="full-width" label="需求内容" :required="!isDraft" :validate-status="errors.content ? 'error' : undefined" :help="errors.content"><Input.TextArea v-model:value="form.content" :rows="9" placeholder="请详细描述需求背景、目标与验收标准…" /></FormItem>
@@ -354,10 +394,10 @@ onBeforeUnmount(clearPreviewRefresh)
                   <div class="attachment-dropzone" :class="{ 'is-dragging': isDragging }" data-test="edit-attachment-dropzone" role="button" tabindex="0" @click="openAttachmentPicker" @keydown.enter.prevent="openAttachmentPicker" @dragenter.prevent="isDragging = true" @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="dropFiles">
                     <p class="ant-upload-drag-icon"><InboxOutlined /></p>
                     <p class="ant-upload-text">拖拽附件到此处，或 <b>点击选择文件</b></p>
-                    <p class="attachment-hint">支持图片、PDF、Word、Excel，单个文件最大 100MB。</p>
+                    <p class="attachment-hint">支持 PDF / Word / 图片等常见格式，单个文件不超过 20 MB</p>
                     <input ref="attachmentInput" data-test="edit-attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectFiles">
                   </div>
-                  <Button type="primary" html-type="button" data-test="edit-attachment-upload" :loading="uploading" :disabled="selectedFiles.length === 0" @click="uploadAttachments">上传附件</Button>
+                  <Button v-if="selectedFiles.length" type="primary" html-type="button" data-test="edit-attachment-upload" :loading="uploading" @click="uploadAttachments">上传附件</Button>
                 </div>
                 <ul v-if="selectedFiles.length" class="attachment-list pending-attachments"><li v-for="file in selectedFiles" :key="`${file.name}-${file.lastModified}`">待上传：{{ file.name }}</li></ul>
                 <ul v-if="attachments.length" class="attachment-list">
@@ -375,7 +415,7 @@ onBeforeUnmount(clearPreviewRefresh)
                     <img v-if="attachment.contentType.startsWith('image/')" :src="`/api/attachments/${attachment.id}`" :alt="`${attachment.originalName} 预览`">
                   </li>
                 </ul>
-                <p v-else class="edit-no-attachment">暂无附件</p>
+                <p v-if="!attachments.length && !selectedFiles.length" class="edit-no-attachment">暂无附件</p>
               </div>
             </FormItem>
           </div>
@@ -383,12 +423,10 @@ onBeforeUnmount(clearPreviewRefresh)
         <div class="editor-footer">
           <span class="editor-save-state">{{ isDraft ? '当前为草稿，可暂存未完成内容' : '修改内容保存后即时生效' }}</span>
           <span class="editor-footer-spacer"></span>
-          <Button html-type="button" @click="emit('cancel')">取消</Button>
           <Button v-if="isDraft" html-type="button" :data-test="`save-draft-${requirementId}`" @click="save()">存为草稿</Button>
-          <Button type="primary" :html-type="isDraft ? 'button' : 'submit'" :data-test="isDraft ? `submit-draft-${requirementId}` : undefined" @click="isDraft && save(true)">{{ isDraft ? '保存并提交' : '保存修改' }}</Button>
+          <Button type="primary" :html-type="isDraft ? 'button' : 'submit'" :data-test="isDraft ? `submit-draft-${requirementId}` : undefined" @click="isDraft && save(true)">保存并提交</Button>
         </div>
-      </form>
-    </Spin>
+    </form>
 
     <Modal v-model:open="previewOpen" :title="previewAttachment?.originalName" :footer="null" destroy-on-close :get-container="false" width="1100px" wrap-class-name="attachment-preview-modal">
       <section v-if="previewAttachment" class="attachment-preview-dialog" data-test="attachment-preview-dialog">
@@ -407,8 +445,80 @@ onBeforeUnmount(clearPreviewRefresh)
 }
 
 .requirement-editor-form {
-  padding-bottom: 72px;
+  padding-bottom: 88px;
 }
+
+.editor-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.editor-breadcrumb button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+}
+
+.editor-breadcrumb button:hover {
+  color: #1677ff;
+}
+
+.editor-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.editor-page-header h1 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.editor-page-header h1 span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.editor-page-header p {
+  margin: 6px 0 0;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.editor-page-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.editor-updated-at { color: rgba(0, 0, 0, 0.45); font-size: 12px; white-space: nowrap; }
+.editor-refresh-button { display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border-radius: 8px; }
+.editor-refresh-button :deep(.ant-btn-icon) { margin: 0; }
 
 .editor-surface {
   padding: 24px 32px 32px;
@@ -498,24 +608,47 @@ onBeforeUnmount(clearPreviewRefresh)
 }
 
 .attachment-upload {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
 }
 
 .attachment-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   min-height: 140px;
-  padding: 20px;
+  padding: 24px;
   border: 1.5px dashed #d9d9d9;
   border-radius: 10px;
   background: #fafbfc;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.attachment-dropzone:hover,
+.attachment-dropzone.is-dragging {
+  border-color: #1677ff;
+  background: #e6f4ff;
 }
 
 .attachment-dropzone :deep(.ant-upload-drag-icon) {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
   margin: 0 0 8px;
+  border-radius: 12px;
+  background: #e6f4ff;
   color: #1677ff;
-  font-size: 28px;
+  font-size: 22px;
+}
+
+.attachment-dropzone:hover :deep(.ant-upload-drag-icon),
+.attachment-dropzone.is-dragging :deep(.ant-upload-drag-icon) {
+  background: #fff;
 }
 
 .attachment-dropzone :deep(.ant-upload-text) {
@@ -528,10 +661,108 @@ onBeforeUnmount(clearPreviewRefresh)
   color: #1677ff;
 }
 
-.attachment-hint {
+.attachment-dropzone .attachment-hint {
   margin: 6px 0 0;
   color: rgba(0, 0, 0, 0.45);
   font-size: 12px;
+}
+
+.attachment-dropzone input[type='file'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.attachment-upload :deep(.ant-btn) {
+  align-self: flex-start;
+}
+
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attachment-list li {
+  padding: 10px 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.attachment-row > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-row :deep(.ant-space) {
+  flex-shrink: 0;
+}
+
+.pending-attachments li {
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.attachment-preview-state {
+  flex-shrink: 0;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+
+.attachment-list img {
+  display: block;
+  max-width: 180px;
+  max-height: 120px;
+  margin-top: 10px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.edit-no-attachment {
+  margin: 12px 0 0;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.attachment-preview-dialog img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.attachment-preview-dialog iframe {
+  width: 100%;
+  height: 70vh;
+  border: 0;
+}
+
+.preview-disclaimer {
+  margin: 0 0 12px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.attachment-preview-dialog .editor-actions a {
+  color: #1677ff;
 }
 
 .editor-footer {
@@ -568,6 +799,22 @@ onBeforeUnmount(clearPreviewRefresh)
 }
 
 @media (max-width: 768px) {
+  .editor-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .editor-page-actions {
+    width: 100%;
+  }
+
+  .editor-page-actions :deep(.ant-btn) {
+    flex: 1;
+  }
+
+  .editor-updated-at { display: none; }
+  .editor-refresh-button { flex: 0 0 34px !important; }
+
   .editor-surface {
     padding: 20px 22px 26px;
   }
@@ -593,12 +840,16 @@ onBeforeUnmount(clearPreviewRefresh)
     padding: 16px;
   }
 
+  .editor-page-header h1 {
+    font-size: 20px;
+  }
+
   .editor-notice {
     align-items: flex-start;
   }
 
   .attachment-upload {
-    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .date-range {

@@ -19,9 +19,34 @@ public interface RequirementRepository extends JpaRepository<RequirementEntity, 
     long countBySystemIdAndDeletedFalse(Long systemId);
     long countByTargetVersionIdAndDeletedFalse(Long targetVersionId);
     java.util.Optional<RequirementEntity> findByIdAndDeletedFalse(Long id);
+    long countByDeletedFalse();
     long countByDeletedFalseAndSaveType(RequirementSaveType saveType);
+    long countByDeletedFalseAndUrgency(RequirementUrgency urgency);
     long countByDeletedFalseAndSaveTypeAndStatus(RequirementSaveType saveType, RequirementStatus status);
     long countByDeletedFalseAndSaveTypeAndUrgency(RequirementSaveType saveType, RequirementUrgency urgency);
+    long countByDeletedFalseAndSaveTypeAndStatusNotIn(RequirementSaveType saveType, Collection<RequirementStatus> statuses);
+    long countByDeletedFalseAndSaveTypeAndUrgencyAndStatusNotIn(
+            RequirementSaveType saveType,
+            RequirementUrgency urgency,
+            Collection<RequirementStatus> statuses);
+
+    @Query("""
+            select system.id as systemId,
+                   coalesce(system.name, '未关联系统') as systemName,
+                   count(requirement) as requirementCount
+            from RequirementEntity requirement
+            left join requirement.system system
+            where requirement.deleted = false
+            group by system.id, system.name
+            order by count(requirement) desc, system.name asc
+            """)
+    List<SystemRequirementCount> countRequirementsBySystem();
+
+    interface SystemRequirementCount {
+        Long getSystemId();
+        String getSystemName();
+        Long getRequirementCount();
+    }
 
     @Query("""
             select requirement

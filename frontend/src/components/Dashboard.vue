@@ -1,18 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Card, Col, Empty, Row, Statistic, Tag } from 'ant-design-vue'
+import { computed, ref } from 'vue'
+import { Card, Empty, Tag } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
-import { subscribeToRefresh } from '../composables/refreshBus'
+import { usePageRefresh } from '../composables/usePageRefresh'
+import ContentSkeleton from './ContentSkeleton.vue'
 import { requirementStatusMeta } from '../constants/statusConfig'
 import { urgencyMeta } from '../constants/urgencyConfig'
-
-interface DashboardSummary {
-  total: number
-  draftCount: number
-  statusCounts: Record<string, number>
-  urgencyCounts: Record<string, number>
-}
 
 interface WorkbenchItem {
   id: number
@@ -20,6 +14,7 @@ interface WorkbenchItem {
   requesterName: string
   systemName: string
   status: string
+  urgency: string
   updatedAt: string
 }
 
@@ -29,41 +24,18 @@ interface WorkbenchData {
 }
 
 const router = useRouter()
-const loading = ref(false)
-const summary = ref<DashboardSummary>({ total: 0, draftCount: 0, statusCounts: {}, urgencyCounts: {} })
 const workbench = ref<WorkbenchData>({ owned: [], assisting: [] })
-const statusEntries = computed(() => Object.entries(summary.value.statusCounts)
-  .map(([key, count]) => ({ key, count })))
-const urgencyEntries = computed(() => ['HIGH', 'MEDIUM', 'LOW']
-  .map((key) => ({ key, count: summary.value.urgencyCounts[key] ?? 0 })))
+const hasAssisting = computed(() => workbench.value.assisting.length > 0)
 
 const loadDashboard = async () => {
-  loading.value = true
-  try {
-    const [summaryResponse, workbenchResponse] = await Promise.all([
-      api.get<DashboardSummary>('/dashboard/summary'),
-      api.get<WorkbenchData>('/dashboard/workbench'),
-    ])
-    summary.value = summaryResponse.data
-    workbench.value = workbenchResponse.data
-  } catch {
-    // 保留上一次成功加载的数据，避免刷新失败时页面闪空。
-  } finally {
-    loading.value = false
-  }
+  const { data } = await api.get<WorkbenchData>('/dashboard/workbench')
+  workbench.value = data
 }
 
-const unsubscribe = subscribeToRefresh('dashboard', loadDashboard)
-
-onMounted(loadDashboard)
-onBeforeUnmount(unsubscribe)
+const { loaded } = usePageRefresh('dashboard', loadDashboard)
 
 const openRequirement = (id: number) => {
   void router.push({ name: 'requirement-detail', params: { id } })
-}
-
-const navigateToRequirements = (filter: { saveType?: string; status?: string }) => {
-  void router.push({ name: 'requirement-list', query: filter })
 }
 
 const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('zh-CN', {
@@ -76,162 +48,152 @@ const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('zh-CN', {
 </script>
 
 <template>
-  <section class="dashboard-shell">
-    <div class="workbench-grid">
-      <Card class="workbench-card" :loading="loading" :bordered="false">
-        <template #title>我负责的系统需求</template>
+  <section class="dashboard-shell" :class="{ 'has-assisting': hasAssisting }">
+    <ContentSkeleton v-if="!loaded" preset="cards" :rows="6" />
+    <div v-else class="workbench-grid" :class="{ 'with-assist': hasAssisting }">
+      <Card class="workbench-card owned-card" :bordered="false">
+        <template #title>
+          <span class="workbench-heading">我负责的系统需求 <span>共 {{ workbench.owned.length }} 条 · 全部未完结</span></span>
+        </template>
         <div v-if="workbench.owned.length" class="workbench-list">
           <button v-for="item in workbench.owned" :key="item.id" class="workbench-row" type="button" @click="openRequirement(item.id)">
             <span class="workbench-main">
-              <span class="workbench-title">{{ item.title }}</span>
-              <span class="workbench-meta">{{ item.systemName }} · 提出人：{{ item.requesterName }} · 更新于 {{ formatUpdatedAt(item.updatedAt) }}</span>
+              <span class="workbench-title">{{ item.title || '未命名需求' }}</span>
+              <span class="workbench-meta">
+                <span class="workbench-system">{{ item.systemName }}</span>
+                <span>提出人：{{ item.requesterName || '—' }}</span>
+                <span>更新于 {{ formatUpdatedAt(item.updatedAt) }}</span>
+              </span>
             </span>
-            <Tag :color="requirementStatusMeta(item.status).color">{{ requirementStatusMeta(item.status).label }}</Tag>
+            <span class="workbench-right">
+              <span class="urgency-chip" :class="`urgency-${item.urgency.toLowerCase()}`">{{ urgencyMeta(item.urgency).label }}</span>
+              <Tag class="status-tag" :color="requirementStatusMeta(item.status).color"><span></span>{{ requirementStatusMeta(item.status).label }}</Tag>
+            </span>
           </button>
         </div>
         <Empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="暂无待处理需求" />
       </Card>
 
-      <Card class="workbench-card" :loading="loading" :bordered="false">
-        <template #title>我协助处理的系统需求</template>
-        <div v-if="workbench.assisting.length" class="workbench-list">
-          <button v-for="item in workbench.assisting" :key="item.id" class="workbench-row" type="button" @click="openRequirement(item.id)">
+      <Card v-if="hasAssisting" class="workbench-card assisting-card" :bordered="false">
+        <template #title>
+          <span class="workbench-heading assist-heading">我协助处理的 <span>{{ workbench.assisting.length }} 条</span></span>
+        </template>
+        <div class="assisting-list">
+          <button v-for="item in workbench.assisting" :key="item.id" class="assisting-row" type="button" @click="openRequirement(item.id)">
             <span class="workbench-main">
-              <span class="workbench-title">{{ item.title }}</span>
-              <span class="workbench-meta">{{ item.systemName }} · 提出人：{{ item.requesterName }} · 更新于 {{ formatUpdatedAt(item.updatedAt) }}</span>
+              <span class="workbench-title">{{ item.title || '未命名需求' }}</span>
+              <span class="workbench-meta"><span class="workbench-system">{{ item.systemName }}</span><span>更新于 {{ formatUpdatedAt(item.updatedAt) }}</span></span>
             </span>
-            <Tag :color="requirementStatusMeta(item.status).color">{{ requirementStatusMeta(item.status).label }}</Tag>
+            <Tag class="status-tag" :color="requirementStatusMeta(item.status).color"><span></span>{{ requirementStatusMeta(item.status).label }}</Tag>
           </button>
         </div>
-        <Empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="暂无协助处理需求" />
       </Card>
     </div>
-
-    <h3 class="section-title">需求概览</h3>
-    <Row :gutter="[16, 16]">
-      <Col :xs="12" :sm="8" :md="6">
-        <Card class="stat-card" hoverable :loading="loading" @click="navigateToRequirements({ saveType: 'SUBMITTED' })">
-          <Statistic title="已提交需求" :value="summary.total" />
-        </Card>
-      </Col>
-      <Col :xs="12" :sm="8" :md="6">
-        <Card class="stat-card" hoverable :loading="loading" @click="navigateToRequirements({ saveType: 'DRAFT' })">
-          <Statistic title="草稿" :value="summary.draftCount" />
-        </Card>
-      </Col>
-      <Col v-for="entry in statusEntries" :key="entry.key" :xs="12" :sm="8" :md="6">
-        <Card class="stat-card" hoverable :loading="loading" @click="navigateToRequirements({ status: entry.key })">
-          <Statistic :value="entry.count">
-            <template #title>
-              <Tag :color="requirementStatusMeta(entry.key).color">{{ requirementStatusMeta(entry.key).label }}</Tag>
-            </template>
-          </Statistic>
-        </Card>
-      </Col>
-      <Col v-for="entry in urgencyEntries" :key="`urgency-${entry.key}`" :xs="12" :sm="8" :md="6">
-        <Card class="stat-card urgency-stat-card" :loading="loading">
-          <Statistic :value="entry.count">
-            <template #title><Tag :color="urgencyMeta(entry.key).color">紧急程度：{{ urgencyMeta(entry.key).label }}</Tag></template>
-          </Statistic>
-        </Card>
-      </Col>
-    </Row>
   </section>
 </template>
 
 <style scoped>
-.dashboard-shell {
-  width: 100%;
-}
+.dashboard-shell { width: 100%; }
 
 .workbench-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
 }
+
+.workbench-grid.with-assist { grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
 
 .workbench-card {
-  min-height: 260px;
+  overflow: hidden;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 3%), 0 4px 16px rgb(0 0 0 / 4%);
 }
 
-.workbench-list {
-  display: grid;
-  max-height: 384px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-right: 4px;
+.workbench-card :deep(.ant-card-head) {
+  min-height: 52px;
+  padding: 0 20px;
+  border-bottom-color: #f0f0f0;
+  background: linear-gradient(180deg, #fafcff, #fff);
 }
 
-.workbench-row {
+.workbench-card :deep(.ant-card-head-title) { padding: 15px 0; }
+.workbench-card :deep(.ant-card-body) { padding: 0; }
+
+.workbench-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.workbench-heading::before {
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #1677ff;
+  content: '';
+}
+
+.workbench-heading span { color: rgba(0, 0, 0, 0.45); font-size: 12px; font-weight: 400; }
+.assist-heading::before { background: #b37feb; }
+
+.workbench-list { max-height: 536px; overflow-y: auto; overscroll-behavior: contain; }
+
+.workbench-row,
+.assisting-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   width: 100%;
-  min-height: 64px;
-  padding: 10px 0;
   border: 0;
-  border-bottom: 1px solid rgb(241 245 249);
-  background: transparent;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
   color: inherit;
   cursor: pointer;
   text-align: left;
+  transition: background-color .15s ease;
 }
 
-.workbench-row:last-child {
-  border-bottom: 0;
-}
+.workbench-row { min-height: 78px; gap: 16px; padding: 15px 20px; }
+.assisting-row { min-height: 70px; gap: 12px; padding: 13px 16px; }
+.workbench-row:last-child, .assisting-row:last-child { border-bottom: 0; }
+.workbench-row:hover, .assisting-row:hover { background: #fafcff; }
+.workbench-row:hover .workbench-title, .assisting-row:hover .workbench-title { color: #1677ff; }
 
-.workbench-row:hover .workbench-title {
-  color: rgb(22 119 255);
-}
+.workbench-main { display: grid; min-width: 0; flex: 1; gap: 4px; }
+.workbench-title { overflow: hidden; color: rgba(0, 0, 0, 0.88); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.assisting-row .workbench-title { font-size: 13.5px; font-weight: 500; }
 
-.workbench-main {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
+.workbench-meta { display: flex; flex-wrap: wrap; gap: 10px; overflow: hidden; color: rgba(0, 0, 0, 0.45); font-size: 12px; }
+.workbench-system { color: #1677ff; font-weight: 500; }
+.workbench-right { display: flex; align-items: center; flex-shrink: 0; gap: 10px; }
 
-.workbench-title,
-.workbench-meta {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workbench-title {
-  color: rgb(15 23 42);
-  font-weight: 600;
-}
-
-.workbench-meta {
-  color: rgb(100 116 139);
+.urgency-chip {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0 6px;
+  border-radius: 6px;
   font-size: 12px;
-}
-
-.section-title {
-  margin: 24px 0 12px;
-  font-size: 16px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.88);
 }
 
-.stat-card {
-  cursor: pointer;
-  transition: box-shadow 0.2s ease;
+.urgency-high { background: #fff1f0; color: #ff4d4f; }
+.urgency-medium { background: #fff7e6; color: #d46b08; }
+.urgency-low { background: #f5f5f5; color: rgba(0, 0, 0, .55); }
+
+.status-tag { display: inline-flex; align-items: center; margin-inline-end: 0; white-space: nowrap; }
+.status-tag span { width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: currentcolor; }
+
+@media (max-width: 1100px) {
+  .workbench-grid.with-assist { grid-template-columns: minmax(0, 1fr); }
 }
 
-.stat-card:hover {
-  box-shadow: 0 4px 16px rgb(15 23 42 / 12%);
-}
-
-.urgency-stat-card {
-  cursor: default;
-}
-
-@media (max-width: 900px) {
-  .workbench-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+@media (max-width: 640px) {
+  .workbench-row { align-items: flex-start; }
+  .workbench-right { flex-direction: column; align-items: flex-end; }
 }
 </style>

@@ -8,7 +8,6 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -97,9 +96,6 @@ class AiConfigService {
             throw new IllegalArgumentException("请先配置服务地址");
         }
         try {
-            var client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(requestTimeoutSeconds))
-                    .build();
             var requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(config.serviceUrl().replaceAll("/+$", "") + "/models"))
                     .timeout(Duration.ofSeconds(requestTimeoutSeconds))
@@ -107,7 +103,8 @@ class AiConfigService {
             if (config.apiKeyEncrypted() != null && encryptionKey != null) {
                 requestBuilder.header("Authorization", "Bearer " + decrypt(config.apiKeyEncrypted()));
             }
-            var response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+            var response = AiHttpClientFactory.send(
+                    requestBuilder.build(), HttpResponse.BodyHandlers.ofString(), requestTimeoutSeconds);
             return response.statusCode() >= 200 && response.statusCode() < 300;
         } catch (Exception e) {
             throw new AiConnectionException("连接测试失败：" + e.getMessage());

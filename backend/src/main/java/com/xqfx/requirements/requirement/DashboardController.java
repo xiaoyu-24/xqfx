@@ -44,6 +44,55 @@ class DashboardController {
         return result;
     }
 
+    /**
+     * 全平台需求分布，用于需求概览页。草稿只计入总数、系统和紧急程度，
+     * 状态与完成率仅基于已正式提交的需求，避免草稿干扰流程统计。
+     */
+    @GetMapping("/overview")
+    @Transactional(readOnly = true)
+    OverviewResponse overview() {
+        var terminalStatuses = Set.of(RequirementStatus.COMPLETED, RequirementStatus.REJECTED, RequirementStatus.CLOSED);
+        var total = repository.countByDeletedFalse();
+        var submitted = repository.countByDeletedFalseAndSaveType(RequirementSaveType.SUBMITTED);
+        var drafts = repository.countByDeletedFalseAndSaveType(RequirementSaveType.DRAFT);
+        var pendingEvaluation = repository.countByDeletedFalseAndSaveTypeAndStatus(
+                RequirementSaveType.SUBMITTED, RequirementStatus.PENDING_EVALUATION);
+        var unfinished = repository.countByDeletedFalseAndSaveTypeAndStatusNotIn(
+                RequirementSaveType.SUBMITTED, terminalStatuses);
+        var completed = repository.countByDeletedFalseAndSaveTypeAndStatus(
+                RequirementSaveType.SUBMITTED, RequirementStatus.COMPLETED);
+        var highUrgencyPending = repository.countByDeletedFalseAndSaveTypeAndUrgencyAndStatusNotIn(
+                RequirementSaveType.SUBMITTED, RequirementUrgency.HIGH, terminalStatuses);
+
+        Map<String, Long> statusCounts = new LinkedHashMap<>();
+        for (RequirementStatus status : RequirementStatus.values()) {
+            statusCounts.put(status.name(), repository.countByDeletedFalseAndSaveTypeAndStatus(RequirementSaveType.SUBMITTED, status));
+        }
+
+        Map<String, Long> urgencyCounts = new LinkedHashMap<>();
+        for (RequirementUrgency urgency : RequirementUrgency.values()) {
+            urgencyCounts.put(urgency.name(), repository.countByDeletedFalseAndUrgency(urgency));
+        }
+
+        var systemCounts = repository.countRequirementsBySystem().stream()
+                .map(item -> new SystemCount(item.getSystemId(), item.getSystemName(), item.getRequirementCount()))
+                .toList();
+        var completionRate = submitted == 0 ? 0 : (int) Math.round((double) completed * 100 / submitted);
+
+        return new OverviewResponse(
+                total,
+                drafts,
+                unfinished,
+                pendingEvaluation,
+                Math.max(unfinished - pendingEvaluation, 0),
+                completed,
+                completionRate,
+                highUrgencyPending,
+                systemCounts,
+                statusCounts,
+                urgencyCounts);
+    }
+
     @GetMapping("/workbench")
     @Transactional(readOnly = true)
     WorkbenchResponse workbench() {
@@ -63,7 +112,8 @@ class DashboardController {
     }
 
     record WorkbenchRequirement(Long id, String title, String requesterName, String systemName,
-                                RequirementStatus status, java.time.LocalDateTime updatedAt) {
+                                RequirementStatus status, RequirementUrgency urgency,
+                                java.time.LocalDateTime updatedAt) {
         static WorkbenchRequirement from(RequirementEntity requirement) {
             return new WorkbenchRequirement(
                     requirement.id(),
@@ -71,7 +121,17 @@ class DashboardController {
                     requirement.requesterName(),
                     requirement.system().name(),
                     requirement.status(),
+                    requirement.urgency(),
                     requirement.updatedAt());
         }
+    }
+
+    record OverviewResponse(long total, long draftCount, long unfinishedCount, long pendingEvaluationCount,
+                            long inProgressCount, long completedCount, int completionRate,
+                            long highUrgencyPendingCount, List<SystemCount> systemCounts,
+                            Map<String, Long> statusCounts, Map<String, Long> urgencyCounts) {
+    }
+
+    record SystemCount(Long systemId, String systemName, Long count) {
     }
 }

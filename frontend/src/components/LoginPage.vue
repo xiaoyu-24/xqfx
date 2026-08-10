@@ -93,7 +93,7 @@ const submitPasswordChange = async () => {
     <Card class="login-card" data-test="login-card">
       <div class="login-brand">
         <AppstoreOutlined class="login-brand-icon" />
-        <span class="login-brand-title">需求分析平台</span>
+        <span class="login-brand-title">需求收集平台</span>
       </div>
 
       <p class="login-hint">请使用管理员分配的账号登录。</p>

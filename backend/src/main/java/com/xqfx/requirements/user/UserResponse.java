@@ -6,7 +6,7 @@ public record UserResponse(
         String displayName,
         Long departmentId,
         String department,
-        boolean admin,
+        UserRole role,
         boolean disabled,
         boolean mustChangePassword) {
 
@@ -17,7 +17,7 @@ public record UserResponse(
                 user.displayName(),
                 user.department() == null ? null : user.department().id(),
                 user.department() == null ? null : user.department().name(),
-                user.isAdmin(),
+                user.role(),
                 user.isDisabled(),
                 user.mustChangePassword());
     }

@@ -127,6 +127,9 @@ public class SystemService {
         if (user.isDisabled()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, label + "账号已停用，不能选择");
         }
+        if (!user.canManageSystems()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, label + "必须是需求处理员或管理员");
+        }
         return user;
     }
 

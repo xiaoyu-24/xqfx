@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotNull;
 
 public record UserSaveRequest(
         @NotBlank(message = "请输入账号")
@@ -18,5 +19,6 @@ public record UserSaveRequest(
         @Positive(message = "部门选择无效")
         Long departmentId,
 
-        boolean admin) {
+        @NotNull(message = "请选择角色")
+        UserRole role) {
 }

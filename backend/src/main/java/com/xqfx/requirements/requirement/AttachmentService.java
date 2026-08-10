@@ -18,6 +18,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipFile;
+import com.xqfx.requirements.user.UserEntity;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.FileSystemResource;
 
@@ -28,8 +29,9 @@ class AttachmentService {
     @Autowired AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, @Value("${app.attachments.root-directory:./uploads}") String rootDirectory, @Value("${app.attachments.minimum-free-space-bytes:0}") long minimumFreeSpaceBytes, @Value("${app.attachments.preview-directory:./previews}") String previewDirectory, AttachmentPreviewService previewService) { this(requirements,attachments,rootDirectory,minimumFreeSpaceBytes,Path.of(previewDirectory),previewService); }
     AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, String rootDirectory, long minimumFreeSpaceBytes) { this(requirements,attachments,rootDirectory,minimumFreeSpaceBytes,Path.of(rootDirectory).resolve("previews"),null); }
     private AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, String rootDirectory, long minimumFreeSpaceBytes, Path previewDirectory, AttachmentPreviewService previewService) { this.requirements=requirements;this.attachments=attachments;this.root=Path.of(rootDirectory).toAbsolutePath().normalize();this.previewRoot=previewDirectory.toAbsolutePath().normalize();this.minimumFreeSpaceBytes=minimumFreeSpaceBytes;this.previewService=previewService; }
-    AttachmentResponse upload(Long requirementId, MultipartFile file) {
+    AttachmentResponse upload(Long requirementId, UserEntity actor, MultipartFile file) {
         var requirement=requirements.findByIdAndDeletedFalse(requirementId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在"));
+        assertCanEdit(requirement, actor);
         var originalName=file.getOriginalFilename()==null?"":Path.of(file.getOriginalFilename()).getFileName().toString();
         var extension=extension(originalName);
         var contentType=file.getContentType()==null?"application/octet-stream":file.getContentType();
@@ -66,9 +68,10 @@ class AttachmentService {
         }
     }
     @Transactional(readOnly=true)
-    java.util.List<AttachmentResponse> list(Long requirementId) {
-        requirements.findByIdAndDeletedFalse(requirementId)
+    java.util.List<AttachmentResponse> list(Long requirementId, UserEntity actor) {
+        var requirement = requirements.findByIdAndDeletedFalse(requirementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"需求不存在"));
+        assertCanView(requirement, actor);
         var activeAttachments = attachments.findByRequirementIdAndDeletedFalseOrderByIdAsc(requirementId);
         if (previewService != null) {
             activeAttachments.stream()
@@ -79,11 +82,20 @@ class AttachmentService {
         }
         return activeAttachments.stream().map(AttachmentResponse::from).toList();
     }
-    AttachmentFile download(Long id) { var attachment=findActive(id); var file=root.resolve(attachment.storedName()).normalize(); if(!file.startsWith(root)||!Files.isRegularFile(file)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"附件文件不存在"); return new AttachmentFile(new FileSystemResource(file),attachment.originalName(),attachment.contentType()); }
-    AttachmentFile preview(Long id) { var attachment=findActive(id); Path file; if(attachment.previewStatus()==AttachmentPreviewStatus.DIRECT) file=root.resolve(attachment.storedName()).normalize(); else if(attachment.previewStatus()==AttachmentPreviewStatus.READY&&attachment.previewRelativePath()!=null) file=previewRoot.resolve(attachment.previewRelativePath()).normalize(); else throw new ResponseStatusException(HttpStatus.CONFLICT,"附件预览尚未生成"); var expectedRoot=attachment.previewStatus()==AttachmentPreviewStatus.DIRECT?root:previewRoot; if(!file.startsWith(expectedRoot)||!Files.isRegularFile(file)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"附件预览文件不存在"); return new AttachmentFile(new FileSystemResource(file),attachment.originalName(),attachment.previewContentType()); }
-    AttachmentResponse retryPreview(Long id) { var attachment=findActive(id); if(attachment.previewStatus()!=AttachmentPreviewStatus.DIRECT){if(previewService!=null)previewService.requestRetry(id);else{attachment.requestPreviewRetry();attachments.save(attachment);}} return AttachmentResponse.from(findActive(id)); }
-    @Transactional void delete(Long id) { var attachment=findActive(id); deleteQuietly(root.resolve(attachment.storedName()).normalize()); if(attachment.previewRelativePath()!=null){var preview=previewRoot.resolve(attachment.previewRelativePath()).normalize();if(preview.startsWith(previewRoot))deleteQuietly(preview);} attachment.delete(); }
+    AttachmentFile download(Long id, UserEntity actor) { var attachment=findActive(id); assertCanView(attachment.requirement(), actor); var file=root.resolve(attachment.storedName()).normalize(); if(!file.startsWith(root)||!Files.isRegularFile(file)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"附件文件不存在"); return new AttachmentFile(new FileSystemResource(file),attachment.originalName(),attachment.contentType()); }
+    AttachmentFile preview(Long id, UserEntity actor) { var attachment=findActive(id); assertCanView(attachment.requirement(), actor); Path file; if(attachment.previewStatus()==AttachmentPreviewStatus.DIRECT) file=root.resolve(attachment.storedName()).normalize(); else if(attachment.previewStatus()==AttachmentPreviewStatus.READY&&attachment.previewRelativePath()!=null) file=previewRoot.resolve(attachment.previewRelativePath()).normalize(); else throw new ResponseStatusException(HttpStatus.CONFLICT,"附件预览尚未生成"); var expectedRoot=attachment.previewStatus()==AttachmentPreviewStatus.DIRECT?root:previewRoot; if(!file.startsWith(expectedRoot)||!Files.isRegularFile(file)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"附件预览文件不存在"); return new AttachmentFile(new FileSystemResource(file),attachment.originalName(),attachment.previewContentType()); }
+    AttachmentResponse retryPreview(Long id, UserEntity actor) { var attachment=findActive(id); assertCanEdit(attachment.requirement(), actor); if(attachment.previewStatus()!=AttachmentPreviewStatus.DIRECT){if(previewService!=null)previewService.requestRetry(id);else{attachment.requestPreviewRetry();attachments.save(attachment);}} return AttachmentResponse.from(findActive(id)); }
+    @Transactional void delete(Long id, UserEntity actor) { var attachment=findActive(id); assertCanEdit(attachment.requirement(), actor); deleteQuietly(root.resolve(attachment.storedName()).normalize()); if(attachment.previewRelativePath()!=null){var preview=previewRoot.resolve(attachment.previewRelativePath()).normalize();if(preview.startsWith(previewRoot))deleteQuietly(preview);} attachment.delete(); }
     private AttachmentEntity findActive(Long id) { return attachments.findByIdAndDeletedFalse(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"附件不存在")); }
+    private static void assertCanView(RequirementEntity requirement, UserEntity actor) { if (!actor.isHandler() && (requirement.requesterUser() == null || !requirement.requesterUser().id().equals(actor.id()))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权访问该需求附件"); }
+    private static void assertCanEdit(RequirementEntity requirement, UserEntity actor) {
+        assertCanView(requirement, actor);
+        if (!actor.isHandler() && !requirement.isDraft()
+                && requirement.status() != RequirementStatus.PENDING_EVALUATION
+                && requirement.status() != RequirementStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "普通用户只能编辑待评估或已确认的需求");
+        }
+    }
     record AttachmentFile(Resource resource,String originalName,String contentType) { }
     private static String extension(String name) { var index=name.lastIndexOf('.'); return index<0?"":name.substring(index+1).toLowerCase(); }
     private static boolean matchesContentType(String extension, String contentType) { return switch (extension) { case "jpg", "jpeg" -> contentType.equals("image/jpeg"); case "png" -> contentType.equals("image/png"); case "gif" -> contentType.equals("image/gif"); case "webp" -> contentType.equals("image/webp"); case "pdf" -> contentType.equals("application/pdf"); case "doc" -> contentType.equals("application/msword"); case "docx" -> contentType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document"); case "xls" -> contentType.equals("application/vnd.ms-excel"); case "xlsx" -> contentType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); default -> false; }; }

@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { Button, Input, Modal, Switch, Table, Tag, message } from 'ant-design-vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
+import { usePageRefresh } from '../composables/usePageRefresh'
+import ContentSkeleton from './ContentSkeleton.vue'
 
 interface ConfigItem {
   id: number
@@ -42,8 +44,6 @@ const loadConfigs = async () => {
   try {
     const { data } = await api.get('/ai-config')
     configs.value = data
-  } catch {
-    message.error('加载 AI 配置失败')
   } finally {
     loading.value = false
   }
@@ -100,7 +100,7 @@ const saveConfig = async () => {
       message.success('配置已保存')
     }
     modalOpen.value = false
-    await loadConfigs()
+    await refresh()
   } catch (error: unknown) {
     const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message
     message.error(msg || '保存失败')
@@ -113,7 +113,7 @@ const activateConfig = async (record: ConfigItem) => {
   try {
     await api.post(`/ai-config/${record.id}/activate`)
     message.success(`已切换使用「${record.name}」`)
-    await loadConfigs()
+    await refresh()
   } catch (error: unknown) {
     const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message
     message.error(msg || '切换失败')
@@ -130,18 +130,20 @@ const toggleEnabled = async (record: ConfigItem) => {
       apiKey: null,
     })
     message.success(record.enabled ? '已停用配置' : '已启用配置')
-    await loadConfigs()
+    await refresh()
   } catch (error: unknown) {
     const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message
     message.error(msg || '操作失败')
   }
 }
 
-onMounted(loadConfigs)
+const { loaded, refresh } = usePageRefresh('aiConfig', loadConfigs)
 </script>
 
 <template>
   <section class="ai-config-page">
+    <ContentSkeleton v-if="!loaded" preset="table" :rows="4" />
+    <template v-else>
     <div class="page-toolbar">
       <Button type="primary" @click="openCreate"><PlusOutlined /> 新增 AI 配置</Button>
     </div>
@@ -149,7 +151,6 @@ onMounted(loadConfigs)
     <Table
       :columns="columns"
       :data-source="configs"
-      :loading="loading"
       :pagination="false"
       row-key="id"
       size="middle"
@@ -225,6 +226,7 @@ onMounted(loadConfigs)
         </div>
       </div>
     </Modal>
+    </template>
   </section>
 </template>
 

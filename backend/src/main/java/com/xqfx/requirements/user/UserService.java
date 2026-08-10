@@ -3,6 +3,7 @@ package com.xqfx.requirements.user;
 import com.xqfx.requirements.dictionary.DictionaryCategory;
 import com.xqfx.requirements.dictionary.DictionaryItemEntity;
 import com.xqfx.requirements.dictionary.DictionaryService;
+import com.xqfx.requirements.system.SystemRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,11 +17,13 @@ public class UserService {
     private final UserRepository repository;
     private final AuthService authService;
     private final DictionaryService dictionaries;
+    private final SystemRepository systems;
 
-    UserService(UserRepository repository, AuthService authService, DictionaryService dictionaries) {
+    UserService(UserRepository repository, AuthService authService, DictionaryService dictionaries, SystemRepository systems) {
         this.repository = repository;
         this.authService = authService;
         this.dictionaries = dictionaries;
+        this.systems = systems;
     }
 
     @Transactional(readOnly = true)
@@ -31,7 +34,8 @@ public class UserService {
     /** 供需求处理人、填写人等下拉选择使用，只返回启用中的账号。 */
     @Transactional(readOnly = true)
     public List<UserResponse> listActiveUsers() {
-        return repository.findByDisabledFalseOrderByDisplayNameAsc().stream().map(UserResponse::from).toList();
+        return repository.findByDisabledFalseAndRoleInOrderByDisplayNameAsc(List.of(UserRole.HANDLER, UserRole.ADMIN))
+                .stream().map(UserResponse::from).toList();
     }
 
     /** 新建账号，使用统一初始密码，首次登录时必须修改。 */
@@ -47,7 +51,7 @@ public class UserService {
                 authService.encodePassword(initialPassword),
                 request.displayName().trim(),
                 resolveOptionalActiveDepartment(request.departmentId()),
-                request.admin());
+                request.role() == null ? UserRole.USER : request.role());
         repository.save(user);
         return new CreatedUser(UserResponse.from(user), initialPassword);
     }
@@ -55,11 +59,17 @@ public class UserService {
     @Transactional
     public UserResponse updateUser(Long id, UserSaveRequest request) {
         var user = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
-        if (user.isAdmin() && !request.admin() && isLastActiveAdmin(user)) {
+        var requestedRole = request.role() == null ? UserRole.USER : request.role();
+        if (user.isAdmin() && requestedRole != UserRole.ADMIN && isLastActiveAdmin(user)) {
             throw new IllegalArgumentException("至少需要保留一个启用中的管理员");
         }
+        if (user.canManageSystems() && requestedRole == UserRole.USER
+                && (systems.existsByOwnerUser_IdAndDeletedFalse(id)
+                || systems.existsByCollaboratorUserIdAndDeletedFalse(id))) {
+            throw new IllegalArgumentException("该账号仍担任系统负责人或协助人，请先完成变更");
+        }
         user.updateProfile(request.displayName().trim(),
-                resolveDepartmentForUpdate(request.departmentId(), user.department()), request.admin());
+                resolveDepartmentForUpdate(request.departmentId(), user.department()), requestedRole);
         repository.save(user);
         return UserResponse.from(user);
     }

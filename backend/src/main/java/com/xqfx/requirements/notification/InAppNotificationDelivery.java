@@ -19,6 +19,9 @@ class InAppNotificationDelivery implements NotificationDelivery {
 
     @Override
     public void deliver(NotificationEvent event, UserEntity recipient) {
+        if (!recipient.canReceiveNotifications()) {
+            return;
+        }
         if (notifications.existsByRecipient_IdAndEventKey(recipient.id(), event.eventKey())) {
             return;
         }

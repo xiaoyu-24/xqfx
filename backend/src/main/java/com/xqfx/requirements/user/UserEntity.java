@@ -3,6 +3,8 @@ package com.xqfx.requirements.user;
 import com.xqfx.requirements.dictionary.DictionaryItemEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -44,8 +46,9 @@ public class UserEntity {
     @JoinColumn(name = "department_id")
     private DictionaryItemEntity department;
 
-    @Column(nullable = false)
-    private boolean adminRole = false;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserRole role = UserRole.USER;
 
     @Column(nullable = false)
     private boolean disabled = false;
@@ -68,12 +71,12 @@ public class UserEntity {
     }
 
     UserEntity(String username, String passwordHash, String displayName,
-               DictionaryItemEntity department, boolean adminRole) {
+               DictionaryItemEntity department, UserRole role) {
         this.username = username;
         this.passwordHash = passwordHash;
         this.displayName = displayName;
         this.department = department;
-        this.adminRole = adminRole;
+        this.role = role == null ? UserRole.USER : role;
     }
 
     public Long id() {
@@ -96,8 +99,24 @@ public class UserEntity {
         return department;
     }
 
+    public UserRole role() {
+        return role;
+    }
+
     public boolean isAdmin() {
-        return adminRole;
+        return role == UserRole.ADMIN;
+    }
+
+    public boolean isHandler() {
+        return role == UserRole.HANDLER || role == UserRole.ADMIN;
+    }
+
+    public boolean canManageSystems() {
+        return isHandler();
+    }
+
+    public boolean canReceiveNotifications() {
+        return isHandler();
     }
 
     public boolean isDisabled() {
@@ -108,10 +127,10 @@ public class UserEntity {
         return mustChangePassword;
     }
 
-    void updateProfile(String displayName, DictionaryItemEntity department, boolean adminRole) {
+    void updateProfile(String displayName, DictionaryItemEntity department, UserRole role) {
         this.displayName = displayName;
         this.department = department;
-        this.adminRole = adminRole;
+        this.role = role == null ? UserRole.USER : role;
     }
 
     void updateDisabled(boolean disabled) {

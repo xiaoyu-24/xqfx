@@ -1,16 +1,25 @@
 package com.xqfx.requirements.user;
 
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.web.server.ResponseStatusException;
 import com.xqfx.requirements.dictionary.DictionaryService;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -38,7 +47,7 @@ class AuthSecurityTest {
 
     @Test
     void loginWithCorrectPassword_succeeds() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, UserRole.USER));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         assertThat(loginResponse.user().username()).isEqualTo("alice");
@@ -47,7 +56,7 @@ class AuthSecurityTest {
 
     @Test
     void loginWithWrongPassword_fails() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, UserRole.USER));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("alice", "wrong")))
                 .isInstanceOf(AuthService.AuthenticationException.class)
@@ -56,7 +65,7 @@ class AuthSecurityTest {
 
     @Test
     void loginWithDisabledAccount_fails() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, UserRole.USER));
         userService.updateDisabled(created.user().id(), true);
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("alice", created.initialPassword())))
@@ -66,7 +75,7 @@ class AuthSecurityTest {
 
     @Test
     void loginFailureRateLimiting_locksAccountAfter5Failures() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, UserRole.USER));
 
         for (int i = 0; i < 5; i++) {
             try {
@@ -90,7 +99,7 @@ class AuthSecurityTest {
 
     @Test
     void authenticateWithValidToken_returnsUser() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, UserRole.USER));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         var authenticated = authService.authenticate(loginResponse.token());
@@ -107,7 +116,7 @@ class AuthSecurityTest {
 
     @Test
     void authenticateAfterAccountDisabled_returnsEmptyAndClearsSession() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, UserRole.USER));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         userService.updateDisabled(created.user().id(), true);
@@ -119,7 +128,7 @@ class AuthSecurityTest {
 
     @Test
     void changePassword_invalidatesAllSessions() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, UserRole.USER));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         authService.changePassword(created.user().id(),
@@ -131,7 +140,7 @@ class AuthSecurityTest {
 
     @Test
     void resetPassword_invalidatesAllSessions() {
-        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, false));
+        var created = userService.createUser(new UserSaveRequest("alice", "Alice Chen", null, UserRole.USER));
         var loginResponse = authService.login(new LoginRequest("alice", created.initialPassword()));
 
         userService.resetPassword(created.user().id());
@@ -142,10 +151,57 @@ class AuthSecurityTest {
 
     @Test
     void cannotDisableLastAdmin() {
-        var created = userService.createUser(new UserSaveRequest("admin", "Admin User", null, true));
+        var created = userService.createUser(new UserSaveRequest("admin", "Admin User", null, UserRole.ADMIN));
 
         assertThatThrownBy(() -> userService.updateDisabled(created.user().id(), true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("至少需要保留一个启用中的管理员");
+    }
+
+    @Test
+    void ordinaryUserCanReadSystems() {
+        var interceptor = interceptorFor(UserRole.USER);
+        var request = authenticatedRequest("GET", "/api/systems");
+
+        try {
+            assertThat(interceptor.preHandle(request, new MockHttpServletResponse(), new Object())).isTrue();
+        } finally {
+            CurrentUser.clear();
+        }
+    }
+
+    @Test
+    void ordinaryUserCanReadSystemVersions() {
+        var interceptor = interceptorFor(UserRole.USER);
+        var request = authenticatedRequest("GET", "/api/systems/1/versions");
+
+        try {
+            assertThat(interceptor.preHandle(request, new MockHttpServletResponse(), new Object())).isTrue();
+        } finally {
+            CurrentUser.clear();
+        }
+    }
+
+    @Test
+    void ordinaryUserCannotCreateSystems() {
+        var interceptor = interceptorFor(UserRole.USER);
+        var request = authenticatedRequest("POST", "/api/systems");
+
+        assertThatThrownBy(() -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object()))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    private static AuthInterceptor interceptorFor(UserRole role) {
+        var authService = mock(AuthService.class);
+        var user = new UserEntity("reader", "hash", "Reader", null, role);
+        when(authService.authenticate("test-token")).thenReturn(Optional.of(user));
+        return new AuthInterceptor(authService);
+    }
+
+    private static MockHttpServletRequest authenticatedRequest(String method, String path) {
+        var request = new MockHttpServletRequest(method, path);
+        request.setCookies(new Cookie(TokenCookie.NAME, "test-token"));
+        return request;
     }
 }

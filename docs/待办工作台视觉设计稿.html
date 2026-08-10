@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>待办工作台 · 视觉设计稿</title>
+  <style>
+    :root {
+      --primary: #1677ff;
+      --primary-hover: #4096ff;
+      --primary-light: #e6f4ff;
+      --text-1: #262626;
+      --text-2: #595959;
+      --text-3: #8c8c8c;
+      --border: #f0f0f0;
+      --border-strong: #d9d9d9;
+      --border-light: #e8e8e8;
+      --bg-page: #f5f7fa;
+      --danger: #ff4d4f;
+      --radius: 10px;
+      --shadow-card: 0 1px 2px rgba(0,0,0,.03), 0 4px 16px rgba(0,0,0,.04);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 14px;
+      color: var(--text-1);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1080px; background: var(--bg-page); }
+    button { font: inherit; cursor: pointer; border: none; background: none; }
+    .app { min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── 顶部导航 ───────────────────────────── */
+    .topbar {
+      height: 60px; display: flex; align-items: center; padding: 0 28px;
+      background: #fff; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: .5px; }
+    .brand-mark {
+      width: 30px; height: 30px; display: grid; place-items: center;
+      border-radius: 8px; color: #fff; font-size: 16px;
+      background: linear-gradient(135deg, #1677ff, #69b1ff);
+      box-shadow: 0 2px 6px rgba(22,119,255,.3);
+    }
+    .search {
+      width: 340px; height: 34px; margin-left: auto; display: flex; align-items: center;
+      border: 1px solid var(--border-light); border-radius: 17px; background: #fafafa; color: var(--text-3);
+    }
+    .search span { padding: 0 14px; flex: 1; font-size: 13px; }
+    .search i { width: 38px; height: 32px; display: grid; place-items: center; font-style: normal; font-size: 15px; color: var(--text-3); }
+    .user { display: flex; align-items: center; gap: 10px; margin-left: 26px; padding-left: 22px; border-left: 1px solid var(--border); }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+      background: linear-gradient(135deg, #1677ff, #91caff); color: #fff; font-size: 13px; font-weight: 600;
+    }
+    .user-meta { display: flex; flex-direction: column; line-height: 1.3; }
+    .user-meta strong { font-size: 13px; }
+    .user-meta em { color: var(--text-3); font-size: 11px; font-style: normal; }
+    .logout { margin-left: 18px; color: var(--text-2); font-size: 13px; cursor: pointer; }
+
+    /* ── 侧边栏（新增"需求概览"入口）───────────── */
+    .layout { flex: 1; display: flex; }
+    .sidebar { width: 216px; flex-shrink: 0; padding: 16px 12px; background: #fff; border-right: 1px solid var(--border); }
+    .nav-item {
+      height: 42px; display: flex; align-items: center; gap: 12px; padding: 0 16px;
+      margin-bottom: 4px; border-radius: 8px; color: var(--text-2); font-size: 14px; cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .nav-item:hover { background: #f5f5f5; color: var(--text-1); }
+    .nav-item.active { color: var(--primary); background: var(--primary-light); font-weight: 600; }
+    .nav-icon { width: 18px; text-align: center; color: var(--text-3); font-size: 15px; }
+    .nav-item.active .nav-icon { color: var(--primary); }
+
+    /* ── 主内容区 ────────────────────────────── */
+    main { flex: 1; min-width: 0; padding: 24px 32px 48px; }
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+    .page-title { margin: 0; font-size: 22px; line-height: 1.35; font-weight: 700; }
+    .page-sub { margin: 6px 0 0; color: var(--text-3); font-size: 13px; }
+    .actions { display: flex; flex-shrink: 0; gap: 10px; align-items: center; }
+    .last-updated { color: var(--text-3); font-size: 12px; }
+    .btn {
+      height: 34px; padding: 0 16px; border: 1px solid var(--border-strong); border-radius: 8px;
+      background: #fff; color: var(--text-1); font-size: 14px;
+      transition: all .2s; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn:hover { border-color: var(--primary); color: var(--primary); }
+    .refresh-btn {
+      width: 34px; height: 34px; display: grid; place-items: center;
+      border: 1px solid var(--border-strong); border-radius: 8px; background: #fff;
+      color: var(--text-2); font-size: 15px; transition: all .2s;
+    }
+    .refresh-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* ── 工作区布局：负责区为主（协助区为空时整行）── */
+    .workbench { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
+    .workbench.with-assist { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+
+    .surface { border-radius: var(--radius); background: #fff; box-shadow: var(--shadow-card); overflow: hidden; }
+    .panel-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #fafcff, #fff);
+    }
+    .panel-title { margin: 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .panel-title::before { content: ""; width: 3px; height: 14px; border-radius: 2px; background: var(--primary); }
+    .panel-title .count { font-size: 12px; font-weight: 500; color: var(--text-3); }
+    .panel-title.assist::before { background: #b37feb; }
+
+    /* 负责区需求行 */
+    .req-list { display: flex; flex-direction: column; }
+    .req-item {
+      display: flex; align-items: center; gap: 16px;
+      padding: 15px 20px; border-bottom: 1px solid var(--border);
+      transition: background .15s; cursor: pointer;
+    }
+    .req-item:last-child { border-bottom: none; }
+    .req-item:hover { background: #fafcff; }
+    .req-main { flex: 1; min-width: 0; }
+    .req-name { font-weight: 600; font-size: 14.5px; color: var(--text-1); }
+    .req-item:hover .req-name { color: var(--primary); }
+    .req-meta { margin-top: 4px; color: var(--text-3); font-size: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .req-meta .sys { color: var(--primary); font-weight: 500; }
+    .req-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .urgency { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+    .urgency.mid { background: #fff7e6; color: #d46b08; }
+    .urgency.high { background: #fff1f0; color: var(--danger); }
+    .tag { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 12px; font-weight: 500; border: 1px solid transparent; white-space: nowrap; }
+    .tag .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .tag.gold { color: #d48806; background: #fffbe6; border-color: #ffe58f; }
+    .tag.blue { color: var(--primary); background: var(--primary-light); border-color: #91caff; }
+    .tag.teal { color: #08979c; background: #e6fffb; border-color: #87e8de; }
+
+    /* 协助区（有数据时的窄栏形态，默认隐藏） */
+    #assistPanel { display: none; }
+    .workbench.with-assist #assistPanel { display: block; }
+    .assist-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 13px 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .15s;
+    }
+    .assist-item:last-child { border-bottom: none; }
+    .assist-item:hover { background: #fafcff; }
+    .assist-item .a-name { font-weight: 500; font-size: 13.5px; }
+    .assist-item .a-meta { margin-top: 3px; color: var(--text-3); font-size: 12px; }
+
+    /* 演示控制台 */
+    .demo-console {
+      margin-top: 24px; padding: 16px 20px;
+      border: 1px dashed var(--border-strong); border-radius: 12px; background: #fcfcfd;
+    }
+    .demo-console h4 { margin: 0 0 4px; font-size: 14px; }
+    .demo-console p { margin: 0 0 12px; color: var(--text-3); font-size: 12.5px; line-height: 1.7; }
+
+    @media (max-width: 1200px) { .workbench.with-assist { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) {
+      body { min-width: 0; }
+      .sidebar { width: 188px; }
+      main { padding: 20px; }
+      .search { width: 240px; }
+    }
+    @media (max-width: 680px) {
+      .topbar { padding: 0 16px; }
+      .search, .user-meta em { display: none; }
+      .user { margin-left: auto; }
+      .sidebar { display: none; }
+      .page-header { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">▦</span><span>需求分析平台</span></div>
+      <div class="search"><span>搜索需求</span><i>⌕</i></div>
+      <div class="user">
+        <span class="avatar">肖</span>
+        <span class="user-meta"><strong>肖晓</strong><em>需求处理员</em></span>
+      </div>
+      <span class="logout">↪ 退出</span>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="nav-item active"><span class="nav-icon">◉</span><span>待办工作台</span></div>
+        <div class="nav-item"><span class="nav-icon">▤</span><span>填写需求</span></div>
+        <div class="nav-item"><span class="nav-icon">☷</span><span>需求列表</span></div>
+        <div class="nav-item"><span class="nav-icon">▥</span><span>需求概览</span></div>
+        <div class="nav-item"><span class="nav-icon">⚙</span><span>系统管理</span></div>
+        <div class="nav-item"><span class="nav-icon">♧</span><span>人员管理</span></div>
+        <div class="nav-item"><span class="nav-icon">▣</span><span>字典管理</span></div>
+        <div class="nav-item"><span class="nav-icon">▤</span><span>AI 配置</span></div>
+      </aside>
+      <main>
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">待办工作台</h1>
+            <p class="page-sub">我负责的系统需求一目了然；需求统计已移至「需求概览」独立页面</p>
+          </div>
+          <div class="actions">
+            <span class="last-updated">更新于 21:39:13</span>
+            <button class="refresh-btn" title="刷新">⟳</button>
+          </div>
+        </div>
+
+        <!-- 协助区为空时：负责区独占整行（当前展示此形态） -->
+        <div class="workbench" id="workbench">
+          <section class="surface">
+            <div class="panel-head">
+              <h3 class="panel-title">我负责的系统需求 <span class="count">共 4 条 · 全部未完结</span></h3>
+            </div>
+            <div class="req-list">
+              <div class="req-item">
+                <div class="req-main">
+                  <div class="req-name">wwww</div>
+                  <div class="req-meta"><span class="sys">cs</span><span>提出人：xiao</span><span>更新于 08/07 17:06</span></div>
+                </div>
+                <div class="req-right">
+                  <span class="urgency mid">中</span>
+                  <span class="tag gold"><span class="dot"></span>待评估</span>
+                </div>
+              </div>
+              <div class="req-item">
+                <div class="req-main">
+                  <div class="req-name">cs</div>
+                  <div class="req-meta"><span class="sys">cs</span><span>提出人：测试</span><span>更新于 08/07 14:38</span></div>
+                </div>
+                <div class="req-right">
+                  <span class="urgency mid">中</span>
+                  <span class="tag blue"><span class="dot"></span>已确认</span>
+                </div>
+              </div>
+              <div class="req-item">
+                <div class="req-main">
+                  <div class="req-name">更新官网</div>
+                  <div class="req-meta"><span class="sys">cs</span><span>提出人：王伟</span><span>更新于 08/07 12:00</span></div>
+                </div>
+                <div class="req-right">
+                  <span class="urgency high">高</span>
+                  <span class="tag gold"><span class="dot"></span>待评估</span>
+                </div>
+              </div>
+              <div class="req-item">
+                <div class="req-main">
+                  <div class="req-name">23213</div>
+                  <div class="req-meta"><span class="sys">cs</span><span>提出人：123</span><span>更新于 07/23 15:44</span></div>
+                </div>
+                <div class="req-right">
+                  <span class="urgency mid">中</span>
+                  <span class="tag teal"><span class="dot"></span>开发中</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 协助区：有数据时才渲染，宽度约为负责区的一半 -->
+          <section class="surface" id="assistPanel">
+            <div class="panel-head">
+              <h3 class="panel-title assist">我协助处理的 <span class="count">2 条</span></h3>
+            </div>
+            <div class="assist-item">
+              <div><div class="a-name">工单自动分派</div><div class="a-meta">客服工单 · 更新于 08/06</div></div>
+              <span class="tag teal"><span class="dot"></span>开发中</span>
+            </div>
+            <div class="assist-item">
+              <div><div class="a-name">订单导出优化</div><div class="a-meta">订单中心 · 更新于 08/05</div></div>
+              <span class="tag gold"><span class="dot"></span>待评估</span>
+            </div>
+          </section>
+        </div>
+
+        <!-- 演示控制台（设计稿辅助说明，非页面内容） -->
+        <div class="demo-console">
+          <h4>演示控制台</h4>
+          <p>当前为「无协助需求」形态：负责区独占整行。点击下方按钮可切换为「有协助需求」形态——负责区收窄为 2/3，协助区以窄栏出现在右侧，信息密度低于负责区。</p>
+          <button class="btn" onclick="document.getElementById('workbench').classList.toggle('with-assist')">切换：有 / 无协助需求</button>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

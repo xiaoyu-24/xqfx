@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { Button, Card, Input, Modal, Table, Tabs, TabPane, Tag, message } from 'ant-design-vue'
 import { EditOutlined, PlusOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
 import { useDictionaryOptions, type DictionaryCategory, type DictionaryItem } from '../composables/useDictionaryOptions'
+import { usePageRefresh } from '../composables/usePageRefresh'
+import ContentSkeleton from './ContentSkeleton.vue'
 
 const category = ref<DictionaryCategory>('DEPARTMENT')
 const items = ref<DictionaryItem[]>([])
@@ -29,20 +31,18 @@ const loadItems = async () => {
   try {
     const { data } = await api.get<DictionaryItem[]>('/dictionaries', { params: { category: category.value } })
     items.value = Array.isArray(data) ? data : []
-  } catch {
-    message.error('加载字典失败')
   } finally {
     loading.value = false
   }
 }
 
 const refreshAfterMutation = async () => {
-  await Promise.all([loadItems(), loadDictionaryOptions(true)])
+  await Promise.all([refresh(), loadDictionaryOptions(true)])
 }
 
 const changeCategory = async (nextCategory: string | number) => {
   category.value = nextCategory as DictionaryCategory
-  await loadItems()
+  await refresh()
 }
 
 const openCreate = () => {
@@ -113,11 +113,13 @@ const toggleDisabled = (item: DictionaryItem) => {
   })
 }
 
-onMounted(loadItems)
+const { loaded, refresh } = usePageRefresh('dictionaries', loadItems)
 </script>
 
 <template>
   <section class="dictionary-management" data-test="dictionary-management">
+    <ContentSkeleton v-if="!loaded" preset="table" :rows="5" />
+    <template v-else>
     <Card :bordered="false">
       <template #title>
         <div class="dictionary-header">
@@ -134,7 +136,7 @@ onMounted(loadItems)
         <TabPane key="REQUIREMENT_TYPE" tab="需求类型" />
       </Tabs>
 
-      <Table :columns="columns" :data-source="items" :loading="loading" row-key="id" :pagination="false">
+      <Table :columns="columns" :data-source="items" row-key="id" :pagination="false">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
             <Tag v-if="record.disabled" color="default"><StopOutlined /> 已停用</Tag>
@@ -159,6 +161,7 @@ onMounted(loadItems)
         <Input id="dictionary-name" v-model:value="form.name" :maxlength="50" @press-enter="save" />
       </div>
     </Modal>
+    </template>
   </section>
 </template>
 
