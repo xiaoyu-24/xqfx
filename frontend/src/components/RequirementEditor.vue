@@ -13,7 +13,6 @@ import { usePageRefresh } from '../composables/usePageRefresh'
 import ContentSkeleton from './ContentSkeleton.vue'
 
 type SystemItem = { id: number; name: string; status: string }
-type VersionItem = { id: number; name: string; status: string }
 type Attachment = {
   id: number
   originalName: string
@@ -37,6 +36,7 @@ type EditableRequirement = {
   systemId: number | null
   systemName?: string | null
   targetVersionId: number | null
+  targetVersionName?: string | null
   periodStartDate: string | null
   periodEndDate: string | null
   content: string | null
@@ -53,7 +53,6 @@ const emit = defineEmits<{
 }>()
 
 const systems = ref<SystemItem[]>([])
-const versions = ref<VersionItem[]>([])
 const attachments = ref<Attachment[]>([])
 const selectedFiles = ref<File[]>([])
 const attachmentInput = ref<HTMLInputElement | null>(null)
@@ -65,7 +64,7 @@ const uploading = ref(false)
 const isDragging = ref(false)
 const saveType = ref('SUBMITTED')
 const form = reactive({
-  requesterName: '', departmentId: '', title: '', typeId: '', content: '', systemId: '', targetVersionId: '',
+  requesterName: '', departmentId: '', title: '', typeId: '', content: '', systemId: '',
   periodStartDate: '', periodEndDate: '', urgency: 'MEDIUM', status: '', recordVersion: 0,
 })
 const allowedAttachmentExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'])
@@ -108,15 +107,6 @@ const systemOptions = computed(() => systems.value.map((system) => ({
     value: String(system.id),
     disabled: system.status !== 'ACTIVE' && String(system.id) !== form.systemId,
   })))
-const versionOptions = computed(() => [
-  { label: '请选择版本（可选）', value: '' },
-  ...versions.value.map((version) => ({
-    label: `${version.name}${version.status === 'ACTIVE' ? '' : '（已停用）'}`,
-    value: String(version.id),
-    disabled: version.status !== 'ACTIVE' && String(version.id) !== form.targetVersionId,
-  })),
-])
-
 const clearPreviewRefresh = () => {
   if (previewRefreshTimer !== undefined) clearTimeout(previewRefreshTimer)
   previewRefreshTimer = undefined
@@ -132,16 +122,6 @@ const refreshAttachments = async () => {
     attachments.value = Array.isArray(data) ? data : []
   } finally {
     schedulePreviewRefresh()
-  }
-}
-const loadVersions = async () => {
-  versions.value = []
-  if (!form.systemId) return
-  try {
-    const { data } = await api.get(`/systems/${form.systemId}/versions`)
-    versions.value = Array.isArray(data) ? data : []
-  } catch {
-    message.warning('编辑时加载版本失败')
   }
 }
 const loadEditor = async () => {
@@ -179,14 +159,12 @@ const loadEditor = async () => {
       content: detail.content ?? '',
       urgency: detail.urgency ?? 'MEDIUM',
       systemId: detail.systemId === null ? '' : String(detail.systemId),
-      targetVersionId: detail.targetVersionId === null ? '' : String(detail.targetVersionId),
       periodStartDate: detail.periodStartDate ?? '',
       periodEndDate: detail.periodEndDate ?? '',
       status: detail.status ?? '',
       recordVersion: detail.recordVersion ?? 0,
     })
     selectedFiles.value = []
-    await loadVersions()
     schedulePreviewRefresh()
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status
@@ -255,9 +233,17 @@ const deleteAttachment = (attachment: Attachment) => {
     },
   })
 }
-const changeSystem = async () => {
-  form.targetVersionId = ''
-  await loadVersions()
+const changeSystem = (value: unknown) => {
+  const nextSystemId = value == null ? '' : String(value)
+  const originalSystemId = requirement.value?.systemId == null ? '' : String(requirement.value.systemId)
+  if (!requirement.value?.targetVersionId || nextSystemId === originalSystemId) return
+  Modal.confirm({
+    title: '更换所属系统',
+    content: `该需求当前已绑定版本“${requirement.value.targetVersionName ?? `#${requirement.value.targetVersionId}`}”。保存后将自动解除版本绑定，是否继续？`,
+    okText: '继续更换',
+    cancelText: '取消',
+    onCancel: () => { form.systemId = originalSystemId },
+  })
 }
 const canPreview = (attachment: Attachment) => attachment.previewAvailable
   ?? (attachment.contentType === 'application/pdf' || attachment.contentType.startsWith('image/'))
@@ -308,7 +294,6 @@ const save = async (submitDraft = false) => {
     urgency: form.urgency,
     content: form.content,
     systemId: form.systemId ? Number(form.systemId) : null,
-    targetVersionId: form.targetVersionId ? Number(form.targetVersionId) : null,
     periodStartDate: form.periodStartDate || null,
     periodEndDate: form.periodEndDate || null,
     recordVersion: form.recordVersion,
@@ -325,7 +310,7 @@ const save = async (submitDraft = false) => {
     if (Object.keys(details.fieldErrors).length > 0) {
       message.error(details.message || '请检查标记的字段后重试')
     } else {
-      handleError(error, '保存需求失败，请检查必填项和系统版本')
+      handleError(error, '保存需求失败，请检查必填项和所属系统')
     }
   }
 }
@@ -385,7 +370,10 @@ onBeforeUnmount(clearPreviewRefresh)
             <FormItem label="紧急程度" :required="!isDraft" :validate-status="errors.urgency ? 'error' : undefined" :help="errors.urgency"><Select v-model:value="form.urgency" :options="urgencyOptions" placeholder="请选择紧急程度" /></FormItem>
             <FormItem class="disabled-field" label="当前状态"><Select v-model:value="form.status" data-test="edit-status" :options="statusOptions" disabled placeholder="提交后默认为待评估" /><template #extra>状态由流程流转自动更新，编辑时不可修改</template></FormItem>
             <FormItem label="所属系统"><Select v-model:value="form.systemId" data-test="edit-system-select" :options="systemOptions" placeholder="请选择所属系统" @change="changeSystem" /></FormItem>
-            <FormItem label="目标版本"><Select v-model:value="form.targetVersionId" :disabled="!form.systemId" :options="versionOptions" placeholder="请选择版本（可选）" /></FormItem>
+            <FormItem label="当前版本">
+              <div class="readonly-version" data-test="current-version-display">{{ requirement?.targetVersionName || '未绑定版本' }}</div>
+              <template v-if="requirement?.targetVersionId" #extra>版本由需求处理员或管理员统一维护；更换所属系统会自动解除当前版本。</template>
+            </FormItem>
             <FormItem data-test="edit-period-field" label="需求时间周期" :validate-status="errors.period ? 'error' : undefined" :help="errors.period"><div class="date-range"><DatePicker v-model:value="form.periodStartDate" value-format="YYYY-MM-DD" placeholder="开始日期" /><span>至</span><DatePicker v-model:value="form.periodEndDate" value-format="YYYY-MM-DD" placeholder="结束日期" /></div></FormItem>
             <FormItem class="full-width" label="需求内容" :required="!isDraft" :validate-status="errors.content ? 'error' : undefined" :help="errors.content"><Input.TextArea v-model:value="form.content" :rows="9" placeholder="请详细描述需求背景、目标与验收标准…" /></FormItem>
             <FormItem class="full-width attachment-form-item" label="附件">

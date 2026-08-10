@@ -1,15 +1,12 @@
 package com.xqfx.requirements.requirement;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import java.util.List;
 import java.util.Collection;
-import java.time.LocalDateTime;
-import com.xqfx.requirements.system.SystemEntity;
 public interface RequirementRepository extends JpaRepository<RequirementEntity, Long>, JpaSpecificationExecutor<RequirementEntity> {
     List<RequirementEntity> findAllByDeletedFalse();
     Page<RequirementEntity> findAllByDeletedFalse(Pageable pageable);
@@ -79,19 +76,4 @@ public interface RequirementRepository extends JpaRepository<RequirementEntity, 
             @Param("saveType") RequirementSaveType saveType,
             @Param("terminalStatuses") Collection<RequirementStatus> terminalStatuses);
 
-    @Modifying
-    @Query("""
-            update RequirementEntity requirement
-               set requirement.system = :targetSystem,
-                   requirement.targetVersion = null,
-                   requirement.recordVersion = requirement.recordVersion + 1,
-                   requirement.updatedAt = :updatedAt
-             where requirement.system.id = :sourceSystemId
-               and requirement.deleted = false
-            """)
-    int migrateSystemAndClearTargetVersion(
-            @Param("sourceSystemId") Long sourceSystemId,
-            @Param("targetSystem") SystemEntity targetSystem,
-            @Param("updatedAt") LocalDateTime updatedAt
-    );
 }

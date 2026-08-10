@@ -32,11 +32,13 @@ class RequirementService {
     private final RequirementProgressRepository progresses;
     private final UserRepository users;
     private final RequirementNotificationService notifications;
+    private final RequirementVersionChangeRepository versionChanges;
 
     RequirementService(RequirementRepository requirements, SystemRepository systems, SystemService systemService,
                        SystemVersionRepository versions, DictionaryService dictionaries,
                        RequirementProgressRepository progresses, UserRepository users,
-                       RequirementNotificationService notifications) {
+                       RequirementNotificationService notifications,
+                       RequirementVersionChangeRepository versionChanges) {
         this.requirements = requirements;
         this.systems = systems;
         this.systemService = systemService;
@@ -45,11 +47,12 @@ class RequirementService {
         this.progresses = progresses;
         this.users = users;
         this.notifications = notifications;
+        this.versionChanges = versionChanges;
     }
 
     @Transactional
     RequirementResponse create(UserEntity requester, String requesterName, Long departmentId, String title, Long typeId, String content,
-                               Long systemId, Long targetVersionId, LocalDate start, LocalDate end,
+                               Long systemId, LocalDate start, LocalDate end,
                                RequirementUrgency urgency,
                                String newSystemName, Long newSystemOwnerUserId,
                                List<Long> newSystemCollaboratorUserIds) {
@@ -71,31 +74,23 @@ class RequirementService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统已停用，不能新建需求");
         }
 
-        var version = targetVersionId == null ? null : findVersion(targetVersionId);
-        if (version != null && !version.isActive()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "版本已停用，不能作为目标版本");
-        }
-        assertVersionBelongsToSystem(version, system);
-
         var saved = requirements.save(new RequirementEntity(requester, normalizeRequesterName(requesterName, requester), department, title, type, content,
-                system, version, RequirementPeriod.of(start, end), urgency));
+                system, null, RequirementPeriod.of(start, end), urgency));
         notifications.onRequirementSubmitted(saved, requester);
         return RequirementResponse.from(saved);
     }
 
     @Transactional
     RequirementResponse createDraft(UserEntity requester, String requesterName, Long departmentId, String title, Long typeId,
-                                    String content, Long systemId, Long targetVersionId,
+                                    String content, Long systemId,
                                     LocalDate start, LocalDate end, RequirementUrgency urgency) {
         var department = requester.department() == null
                 ? resolveOptionalActive(departmentId, DictionaryCategory.DEPARTMENT, "部门")
                 : requester.department();
         var type = resolveOptionalActive(typeId, DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
         var system = systemId == null ? null : findSystem(systemId);
-        var version = targetVersionId == null ? null : findVersion(targetVersionId);
-        assertVersionBelongsToSystem(version, system);
         return RequirementResponse.from(requirements.save(RequirementEntity.draft(requester, normalizeRequesterName(requesterName, requester), department, title,
-                type, content, system, version, RequirementPeriod.of(start, end), urgency)));
+                type, content, system, null, RequirementPeriod.of(start, end), urgency)));
     }
 
     @Transactional(readOnly = true)
@@ -162,7 +157,7 @@ class RequirementService {
 
     @Transactional
     RequirementResponse updateDraft(Long id, UserEntity actor, String requesterName, Long departmentId, String title, Long typeId,
-                                    String content, Long systemId, Long targetVersionId,
+                                    String content, Long systemId,
                                     LocalDate start, LocalDate end, RequirementUrgency urgency, Long recordVersion) {
         var requirement = findActive(id);
         assertCanEdit(requirement, actor);
@@ -175,17 +170,17 @@ class RequirementService {
         var type = resolveForUpdate(typeId, requirement.type(),
                 DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
         var system = systemId == null ? null : findSystem(systemId);
-        var version = targetVersionId == null ? null : findVersion(targetVersionId);
-        assertVersionBelongsToSystem(version, system);
-        requirement.updateDraft(requesterName, department, title, type, content, system, version,
+        var previousVersion = requirement.targetVersion();
+        requirement.updateDraft(requesterName, department, title, type, content, system,
                 RequirementPeriod.of(start, end), urgency);
+        recordAutomaticUnbind(requirement, previousVersion, actor);
         requirements.flush();
         return RequirementResponse.from(requirement);
     }
 
     @Transactional
     RequirementResponse update(Long id, UserEntity actor, String requesterName, Long departmentId, String title, Long typeId,
-                               String content, Long systemId, Long targetVersionId,
+                               String content, Long systemId,
                                LocalDate start, LocalDate end, RequirementUrgency urgency, Long recordVersion) {
         var requirement = findActive(id);
         assertCanEdit(requirement, actor);
@@ -196,18 +191,14 @@ class RequirementService {
         var type = resolveForUpdate(typeId, requirement.type(),
                 DictionaryCategory.REQUIREMENT_TYPE, "需求类型");
         var system = systemId == null ? null : findSystem(systemId);
-        var version = targetVersionId == null ? null : findVersion(targetVersionId);
         if (system != null && !system.isActive()
                 && (requirement.system() == null || !system.id().equals(requirement.system().id()))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统已停用，不能主动更换");
         }
-        if (version != null && !version.isActive()
-                && (requirement.targetVersion() == null || !version.id().equals(requirement.targetVersion().id()))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "版本已停用，不能主动更换");
-        }
-        assertVersionBelongsToSystem(version, system);
-        requirement.update(requesterName, department, title, type, content, system, version,
+        var previousVersion = requirement.targetVersion();
+        requirement.update(requesterName, department, title, type, content, system,
                 RequirementPeriod.of(start, end), urgency);
+        recordAutomaticUnbind(requirement, previousVersion, actor);
         if (submittingDraft) {
             requirement.linkRequesterUserIfMissing(actor);
         }
@@ -328,6 +319,13 @@ class RequirementService {
     private static void assertVersionBelongsToSystem(SystemVersionEntity version, SystemEntity system) {
         if (version != null && (system == null || !version.system().id().equals(system.id()))) {
             throw new IllegalArgumentException("目标版本不属于所属系统");
+        }
+    }
+
+    private void recordAutomaticUnbind(RequirementEntity requirement, SystemVersionEntity previousVersion, UserEntity actor) {
+        if (previousVersion != null && requirement.targetVersion() == null) {
+            versionChanges.save(new RequirementVersionChangeEntity(
+                    requirement, previousVersion, null, RequirementVersionChangeAction.UNBIND, actor));
         }
     }
 

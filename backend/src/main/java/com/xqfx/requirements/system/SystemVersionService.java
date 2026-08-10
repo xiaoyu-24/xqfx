@@ -20,7 +20,7 @@ class SystemVersionService {
     }
 
     @Transactional
-    SystemVersionResponse create(Long systemId, String name) {
+    SystemVersionResponse create(Long systemId, String name, String description) {
         var system = findActiveSystem(systemId);
         if (!system.isActive()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "系统已停用，不能新增版本");
@@ -31,7 +31,7 @@ class SystemVersionService {
         if (versionRepository.existsBySystemIdAndActiveNameKey(systemId, SystemVersionEntity.normalizedName(name))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "版本名称已存在");
         }
-        return toResponse(versionRepository.save(new SystemVersionEntity(system, name)));
+        return toResponse(versionRepository.saveAndFlush(new SystemVersionEntity(system, name, description)));
     }
 
     @Transactional(readOnly = true)
@@ -42,23 +42,32 @@ class SystemVersionService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    SystemVersionResponse get(Long id) {
+        return toResponse(findActiveVersion(id));
+    }
+
     @Transactional
-    SystemVersionResponse update(Long id, String name) {
+    SystemVersionResponse update(Long id, String name, String description, Long recordVersion) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("版本名称不能为空");
         }
         var version = findActiveVersion(id);
+        assertRecordVersion(version.recordVersion(), recordVersion);
         if (versionRepository.existsBySystemIdAndActiveNameKeyAndIdNot(version.system().id(), SystemVersionEntity.normalizedName(name), id)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "版本名称已存在");
         }
-        version.updateName(name);
+        version.update(name, description);
+        versionRepository.flush();
         return toResponse(version);
     }
 
     @Transactional
-    SystemVersionResponse updateStatus(Long id, SystemVersionStatus status) {
+    SystemVersionResponse updateStatus(Long id, SystemVersionStatus status, Long recordVersion) {
         var version = findActiveVersion(id);
+        assertRecordVersion(version.recordVersion(), recordVersion);
         version.updateStatus(status);
+        versionRepository.flush();
         return toResponse(version);
     }
 
@@ -83,5 +92,11 @@ class SystemVersionService {
     private SystemVersionEntity findActiveVersion(Long id) {
         return versionRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "版本不存在"));
+    }
+
+    private static void assertRecordVersion(long currentVersion, Long requestedVersion) {
+        if (requestedVersion == null || requestedVersion != currentVersion) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "版本已被其他人修改，请刷新后重试");
+        }
     }
 }

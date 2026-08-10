@@ -53,6 +53,81 @@ final class RequirementSpecifications {
         return specification.and(orderBy(sortBy, sortDirection));
     }
 
+    static Specification<RequirementEntity> versionCandidates(Long systemId, Long currentVersionId, String keyword,
+                                                               RequirementStatus status, RequirementUrgency urgency,
+                                                               String source) {
+        if (status != null && !unfinishedStatuses().contains(status)) {
+            throw new IllegalArgumentException("版本需求状态筛选仅支持非终态");
+        }
+        Specification<RequirementEntity> specification = (root, query, criteriaBuilder) -> criteriaBuilder.and(
+                criteriaBuilder.isFalse(root.get("deleted")),
+                criteriaBuilder.equal(root.get("system").get("id"), systemId),
+                criteriaBuilder.equal(root.get("saveType"), RequirementSaveType.SUBMITTED),
+                root.get("status").in(unfinishedStatuses()),
+                criteriaBuilder.or(
+                        criteriaBuilder.isNull(root.get("targetVersion")),
+                        criteriaBuilder.notEqual(root.get("targetVersion").get("id"), currentVersionId))
+        );
+        if (hasText(keyword)) {
+            var pattern = "%" + keyword.trim().toLowerCase() + "%";
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("title")), pattern));
+        }
+        if (status != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.equal(root.get("status"), status));
+        }
+        if (urgency != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.equal(root.get("urgency"), urgency));
+        }
+        if ("UNASSIGNED".equalsIgnoreCase(source)) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.isNull(root.get("targetVersion")));
+        } else if ("OTHER_VERSION".equalsIgnoreCase(source)) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.isNotNull(root.get("targetVersion")));
+        } else if (hasText(source)) {
+            throw new IllegalArgumentException("需求来源筛选无效");
+        }
+        return specification.and((root, query, criteriaBuilder) -> {
+            if (!Long.class.equals(query.getResultType())) {
+                query.orderBy(criteriaBuilder.desc(root.get("updatedAt")));
+            }
+            return criteriaBuilder.conjunction();
+        });
+    }
+
+    static Specification<RequirementEntity> versionCurrent(Long versionId, String keyword,
+                                                            RequirementStatus status, RequirementUrgency urgency) {
+        if (status != null && !unfinishedStatuses().contains(status)) {
+            throw new IllegalArgumentException("版本需求状态筛选仅支持非终态");
+        }
+        Specification<RequirementEntity> specification = (root, query, criteriaBuilder) -> criteriaBuilder.and(
+                criteriaBuilder.isFalse(root.get("deleted")),
+                criteriaBuilder.equal(root.get("saveType"), RequirementSaveType.SUBMITTED),
+                criteriaBuilder.equal(root.get("targetVersion").get("id"), versionId));
+        if (hasText(keyword)) {
+            var pattern = "%" + keyword.trim().toLowerCase() + "%";
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("title")), pattern));
+        }
+        if (status != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.equal(root.get("status"), status));
+        }
+        if (urgency != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.equal(root.get("urgency"), urgency));
+        }
+        return specification.and((root, query, criteriaBuilder) -> {
+            if (!Long.class.equals(query.getResultType())) {
+                query.orderBy(criteriaBuilder.desc(root.get("updatedAt")));
+            }
+            return criteriaBuilder.conjunction();
+        });
+    }
+
     private static Specification<RequirementEntity> orderBy(String sortBy, String sortDirection) {
         return (root, query, criteriaBuilder) -> {
             if (!Long.class.equals(query.getResultType())) {

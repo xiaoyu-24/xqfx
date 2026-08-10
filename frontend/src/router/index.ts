@@ -11,6 +11,7 @@ import RequirementDetail from '../components/RequirementDetail.vue'
 import RequirementList from '../components/RequirementList.vue'
 import SystemManagement from '../components/SystemManagement.vue'
 import UserManagement from '../components/UserManagement.vue'
+import VersionRequirementManagement from '../components/VersionRequirementManagement.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -84,6 +85,12 @@ const routes: RouteRecordRaw[] = [
     path: '/versions',
     name: 'version-management',
     redirect: { name: 'system-management' },
+  },
+  {
+    path: '/versions/:versionId(\\d+)',
+    name: 'version-requirement-management',
+    component: VersionRequirementManagement,
+    meta: protectedPage('systems', '版本需求管理', '集中绑定、迁移或解除当前版本的需求。', ['HANDLER', 'ADMIN']),
   },
   {
     path: '/admin/users',

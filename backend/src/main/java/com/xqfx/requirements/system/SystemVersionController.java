@@ -2,6 +2,7 @@ package com.xqfx.requirements.system;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +25,7 @@ class SystemVersionController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     SystemVersionResponse create(@PathVariable Long systemId, @Valid @RequestBody CreateVersionRequest request) {
-        return service.create(systemId, request.name());
+        return service.create(systemId, request.name(), request.description());
     }
 
     @GetMapping
@@ -32,6 +33,6 @@ class SystemVersionController {
         return service.list(systemId);
     }
 
-    record CreateVersionRequest(@NotBlank String name) {
+    record CreateVersionRequest(@NotBlank String name, @Size(max = 2000) String description) {
     }
 }

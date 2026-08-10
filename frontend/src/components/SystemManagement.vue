@@ -29,8 +29,10 @@ type VersionItem = {
   id: number
   systemId: number
   name: string
+  description: string | null
   status: SystemStatus
   requirementCount: number
+  recordVersion: number
 }
 type ActiveUser = { id: number; username: string; displayName: string }
 
@@ -52,7 +54,7 @@ const statusFilter = ref('')
 const systemFormMode = ref<'create' | 'edit' | null>(null)
 const systemForm = reactive({ id: 0, name: '', ownerUserId: undefined as number | undefined, collaboratorUserIds: [] as number[], recordVersion: 0 })
 const versionFormMode = ref<'create' | 'edit' | null>(null)
-const versionForm = reactive({ id: 0, name: '' })
+const versionForm = reactive({ id: 0, name: '', description: '', recordVersion: 0 })
 const migrationSourceId = ref<number | null>(null)
 const unassignedMigrationTarget = '__unassigned__'
 const migrationTargetId = ref<number | typeof unassignedMigrationTarget>(unassignedMigrationTarget)
@@ -243,13 +245,18 @@ const viewRequirements = (systemId: number) => {
 
 const showCreateVersion = () => {
   if (!selectedSystem.value) return
-  Object.assign(versionForm, { id: 0, name: '' })
+  Object.assign(versionForm, { id: 0, name: '', description: '', recordVersion: 0 })
   versionFormMode.value = 'create'
   clearErrors()
 }
 
 const showEditVersion = (version: VersionItem) => {
-  Object.assign(versionForm, { id: version.id, name: version.name })
+  Object.assign(versionForm, {
+    id: version.id,
+    name: version.name,
+    description: version.description ?? '',
+    recordVersion: version.recordVersion,
+  })
   versionFormMode.value = 'edit'
   clearErrors()
 }
@@ -265,12 +272,13 @@ const saveVersion = async () => {
   const systemId = selectedSystemId.value
   if (systemId === null) return
   try {
+    const body = { name: versionForm.name.trim(), description: versionForm.description.trim() || null }
     if (versionFormMode.value === 'create') {
-      await api.post(`/systems/${systemId}/versions`, { name: versionForm.name.trim() })
+      await api.post(`/systems/${systemId}/versions`, body)
       message.success('新增版本成功')
     } else {
-      await api.put(`/system-versions/${versionForm.id}`, { name: versionForm.name.trim() })
-      message.success('版本名称已更新')
+      await api.put(`/system-versions/${versionForm.id}`, { ...body, recordVersion: versionForm.recordVersion })
+      message.success('版本信息已更新')
     }
     versionFormMode.value = null
     await refreshWorkspace()
@@ -284,13 +292,17 @@ const saveVersion = async () => {
 const toggleVersion = async (version: VersionItem) => {
   const status: SystemStatus = version.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
   try {
-    await api.patch(`/system-versions/${version.id}/status`, { status })
+    await api.patch(`/system-versions/${version.id}/status`, { status, recordVersion: version.recordVersion })
     message.success(status === 'ACTIVE' ? '版本已启用' : '版本已停用')
     await refreshWorkspace()
     markChanged(['requirements', 'dashboard', 'overview'])
   } catch {
     message.error('更新版本状态失败')
   }
+}
+
+const manageVersionRequirements = (versionId: number) => {
+  void router.push({ name: 'version-requirement-management', params: { versionId } })
 }
 
 const deleteVersion = async (version: VersionItem) => {
@@ -350,9 +362,9 @@ const { loaded } = usePageRefresh('systems', refreshWorkspace)
             <div v-if="versions.length" class="version-card-list">
               <article v-for="version in versions" :key="version.id" class="version-card">
                 <span class="version-icon"><TagsOutlined /></span>
-                <div class="version-main"><strong>{{ version.name }}</strong><span>关联需求 {{ version.requirementCount }} 条</span></div>
+                <div class="version-main"><strong>{{ version.name }}</strong><span class="version-description">{{ version.description || '暂无版本说明' }}</span><span>关联需求 {{ version.requirementCount }} 条</span></div>
                 <Tag :color="entityStatusMeta(version.status).color">{{ entityStatusMeta(version.status).label }}</Tag>
-                <div v-if="isHandler" class="version-card-actions"><Button type="link" size="small" @click="showEditVersion(version)">编辑</Button><Button type="link" size="small" @click="toggleVersion(version)">{{ version.status === 'ACTIVE' ? '停用' : '启用' }}</Button><Popconfirm :title="`确定删除版本“${version.name}”吗？`" ok-text="删除" cancel-text="取消" @confirm="deleteVersion(version)"><Button danger type="link" size="small">删除</Button></Popconfirm></div>
+                <div v-if="isHandler" class="version-card-actions"><Button type="link" size="small" @click="manageVersionRequirements(version.id)">管理需求</Button><Button type="link" size="small" @click="showEditVersion(version)">编辑</Button><Button type="link" size="small" @click="toggleVersion(version)">{{ version.status === 'ACTIVE' ? '停用' : '启用' }}</Button><Popconfirm :title="`确定删除版本“${version.name}”吗？`" ok-text="删除" cancel-text="取消" @confirm="deleteVersion(version)"><Button danger type="link" size="small">删除</Button></Popconfirm></div>
               </article>
             </div>
             <Empty v-else-if="!versionLoading" class="workspace-empty" description="暂无版本，请新增。" />
@@ -375,6 +387,7 @@ const { loaded } = usePageRefresh('systems', refreshWorkspace)
     <Modal v-model:open="versionFormOpen" :title="versionFormMode === 'create' ? '新增版本' : '编辑版本'" :footer="null" destroy-on-close :get-container="false" @cancel="versionFormMode = null">
       <Form data-test="version-modal" layout="vertical" @submit.prevent="saveVersion">
         <FormItem label="版本名称" required :validate-status="errors.name ? 'error' : undefined" :help="errors.name"><Input v-model:value="versionForm.name" data-test="version-name" placeholder="请输入版本名称" /></FormItem>
+        <FormItem label="版本说明" extra="选填，最多 2000 字"><Input.TextArea v-model:value="versionForm.description" data-test="version-description" :rows="5" :maxlength="2000" show-count placeholder="说明版本目标、范围或交付计划" /></FormItem>
         <div class="modal-actions"><Button html-type="button" @click="versionFormMode = null">取消</Button><Button type="primary" html-type="submit">保存</Button></div>
       </Form>
     </Modal>

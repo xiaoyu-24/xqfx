@@ -26,7 +26,6 @@ const form = reactive({
   periodStartDate: '',
   periodEndDate: '',
   systemId: '',
-  targetVersionId: '',
   content: '',
 })
 
@@ -54,8 +53,6 @@ const analyzeWithAi = async () => {
     if (data.systemId && !form.systemId) {
       systemSelect.value = String(data.systemId)
       form.systemId = String(data.systemId)
-      await loadVersions()
-      if (data.targetVersionId && !form.targetVersionId) { form.targetVersionId = String(data.targetVersionId) }
       filled++
     }
     if (filled > 0) {
@@ -73,7 +70,6 @@ const analyzeWithAi = async () => {
 
 const submitting = ref(false)
 const systems = ref<Array<{ id: number; name: string; status: string }>>([])
-const versions = ref<Array<{ id: number; name: string; status: string }>>([])
 const selectedFiles = ref<File[]>([])
 const uploadedAttachments = ref<Array<{ id: number; originalName: string }>>([])
 const uploadProgress = ref(0)
@@ -129,19 +125,8 @@ onBeforeUnmount(() => {
   setCreateFormDirty(false)
 })
 
-const loadVersions = async () => {
-  form.targetVersionId = ''
-  versions.value = []
-  if (!form.systemId) return
-  try {
-    versions.value = (await api.get(`/systems/${form.systemId}/versions`)).data.filter((version: { status: string }) => version.status === 'ACTIVE')
-  } catch {
-    message.warning('版本列表加载失败')
-  }
-}
-const onSystemSelectChange = async () => {
+const onSystemSelectChange = () => {
   form.systemId = systemSelect.value
-  await loadVersions()
 }
 const requestBody = () => ({
   requesterName: form.requesterName,
@@ -151,7 +136,6 @@ const requestBody = () => ({
   urgency: form.urgency,
   content: form.content, periodStartDate: form.periodStartDate || null, periodEndDate: form.periodEndDate || null,
   systemId: form.systemId ? Number(form.systemId) : null,
-  targetVersionId: form.targetVersionId ? Number(form.targetVersionId) : null,
 })
 const validateForm = (draft: boolean) => {
   clearErrors()
@@ -290,12 +274,6 @@ const submit = async (draft: boolean) => {
           <Form.Item class="full-width" label="所属系统" required :validate-status="errors.systemSelect ? 'error' : undefined" :help="errors.systemSelect">
             <Select v-model:value="systemSelect" data-test="system-select" placeholder="请选择系统" @change="onSystemSelectChange">
               <Select.Option v-for="system in systems" :key="system.id" :value="String(system.id)">{{ system.name }}</Select.Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item label="目标版本">
-            <Select v-model:value="form.targetVersionId" data-test="version-select" :disabled="!form.systemId" placeholder="请选择版本（可选）">
-              <Select.Option v-for="version in versions" :key="version.id" :value="String(version.id)">{{ version.name }}</Select.Option>
             </Select>
           </Form.Item>
 

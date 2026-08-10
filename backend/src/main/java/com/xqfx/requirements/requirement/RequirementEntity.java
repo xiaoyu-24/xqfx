@@ -167,6 +167,15 @@ class RequirementEntity {
         this.assignee = assignee;
     }
 
+    void changeTargetVersion(SystemVersionEntity targetVersion) {
+        this.targetVersion = targetVersion;
+    }
+
+    void migrateSystem(SystemEntity targetSystem) {
+        this.system = targetSystem;
+        this.targetVersion = null;
+    }
+
     void linkRequesterUserIfMissing(UserEntity requesterUser) {
         if (this.requesterUser == null) {
             this.requesterUser = requesterUser;
@@ -175,14 +184,15 @@ class RequirementEntity {
 
     void update(String requesterName, DictionaryItemEntity department, String title,
                 DictionaryItemEntity type, String content, SystemEntity system,
-                SystemVersionEntity targetVersion, RequirementPeriod period, RequirementUrgency urgency) {
+                RequirementPeriod period, RequirementUrgency urgency) {
+        var systemChanged = !sameSystem(this.system, system);
         this.requesterName = requesterName;
         this.department = department;
         this.title = title;
         this.type = type;
         this.content = content;
         this.system = system;
-        this.targetVersion = targetVersion;
+        if (systemChanged) this.targetVersion = null;
         this.periodStartDate = period.startDate();
         this.periodEndDate = period.endDate();
         this.urgency = normalizeUrgency(urgency);
@@ -199,14 +209,15 @@ class RequirementEntity {
 
     void updateDraft(String requesterName, DictionaryItemEntity department, String title,
                      DictionaryItemEntity type, String content, SystemEntity system,
-                     SystemVersionEntity targetVersion, RequirementPeriod period, RequirementUrgency urgency) {
+                     RequirementPeriod period, RequirementUrgency urgency) {
+        var systemChanged = !sameSystem(this.system, system);
         this.requesterName = requesterName;
         this.department = department;
         this.title = title;
         this.type = type;
         this.content = content;
         this.system = system;
-        this.targetVersion = targetVersion;
+        if (systemChanged) this.targetVersion = null;
         this.periodStartDate = period.startDate();
         this.periodEndDate = period.endDate();
         this.urgency = normalizeUrgency(urgency);
@@ -238,5 +249,10 @@ class RequirementEntity {
 
     private static RequirementUrgency normalizeUrgency(RequirementUrgency urgency) {
         return urgency == null ? RequirementUrgency.MEDIUM : urgency;
+    }
+
+    private static boolean sameSystem(SystemEntity current, SystemEntity requested) {
+        if (current == null || requested == null) return current == requested;
+        return current.id().equals(requested.id());
     }
 }

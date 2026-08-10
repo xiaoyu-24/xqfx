@@ -36,7 +36,7 @@ class RequirementController {
     @ResponseStatus(HttpStatus.CREATED)
     RequirementResponse create(@Valid @RequestBody CreateRequirementRequest request) {
         return service.create(CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
-                request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
+                request.content(), request.systemId(), request.periodStartDate(),
                 request.periodEndDate(), request.urgency(), request.newSystem() == null ? null : request.newSystem().name(),
                 request.newSystem() == null ? null : request.newSystem().ownerUserId(),
                 request.newSystem() == null ? null : request.newSystem().collaboratorUserIds());
@@ -46,7 +46,7 @@ class RequirementController {
     @ResponseStatus(HttpStatus.CREATED)
     RequirementResponse createDraft(@RequestBody DraftRequirementRequest request) {
         return service.createDraft(CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
-                request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
+                request.content(), request.systemId(), request.periodStartDate(),
                 request.periodEndDate(), request.urgency());
     }
 
@@ -106,14 +106,14 @@ class RequirementController {
     @PutMapping("/{id:\\d+}/draft")
     RequirementResponse updateDraft(@PathVariable Long id, @RequestBody DraftRequirementRequest request) {
         return service.updateDraft(id, CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
-                request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
+                request.content(), request.systemId(), request.periodStartDate(),
                 request.periodEndDate(), request.urgency(), request.recordVersion());
     }
 
     @PutMapping("/{id:\\d+}")
     RequirementResponse update(@PathVariable Long id, @Valid @RequestBody UpdateRequirementRequest request) {
         return service.update(id, CurrentUser.require(), request.requesterName(), request.departmentId(), request.title(), request.typeId(),
-                request.content(), request.systemId(), request.targetVersionId(), request.periodStartDate(),
+                request.content(), request.systemId(), request.periodStartDate(),
                 request.periodEndDate(), request.urgency(), request.recordVersion());
     }
 
@@ -139,20 +139,20 @@ class RequirementController {
 
     record UpdateRequirementRequest(@NotBlank(message = "请输入姓名") String requesterName, @NotNull(message = "请选择部门") Long departmentId,
                                     @NotBlank(message = "请输入需求标题") String title, @NotNull(message = "请选择需求类型") Long typeId, @NotBlank(message = "请输入需求内容") String content,
-                                    Long systemId, Long targetVersionId, LocalDate periodStartDate,
+                                    Long systemId, LocalDate periodStartDate,
                                     LocalDate periodEndDate, @NotNull(message = "请选择紧急程度") RequirementUrgency urgency,
                                     @NotNull Long recordVersion) {
     }
 
     record CreateRequirementRequest(@NotBlank(message = "请输入姓名") String requesterName, @NotNull(message = "请选择部门") Long departmentId,
                                     @NotBlank(message = "请输入需求标题") String title, @NotNull(message = "请选择需求类型") Long typeId, @NotBlank(message = "请输入需求内容") String content,
-                                    Long systemId, Long targetVersionId, LocalDate periodStartDate,
+                                    Long systemId, LocalDate periodStartDate,
                                     LocalDate periodEndDate, @NotNull(message = "请选择紧急程度") RequirementUrgency urgency,
                                     NewSystemRequest newSystem) {
     }
 
     record DraftRequirementRequest(String requesterName, Long departmentId, String title, Long typeId,
-                                   String content, Long systemId, Long targetVersionId, LocalDate periodStartDate,
+                                   String content, Long systemId, LocalDate periodStartDate,
                                    LocalDate periodEndDate, RequirementUrgency urgency, Long recordVersion) {
     }
 

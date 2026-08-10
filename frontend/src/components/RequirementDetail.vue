@@ -56,6 +56,14 @@ type Progress = {
   status: string | null
   createdAt: string
 }
+type VersionChange = {
+  id: number
+  fromVersionName: string | null
+  toVersionName: string | null
+  action: 'BIND' | 'MIGRATE' | 'UNBIND'
+  operatorName: string
+  createdAt: string
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -63,6 +71,7 @@ const requirement = ref<Requirement | null>(null)
 const systems = ref<SystemItem[]>([])
 const attachments = ref<Attachment[]>([])
 const progresses = ref<Progress[]>([])
+const versionChanges = ref<VersionChange[]>([])
 const previewAttachment = ref<Attachment | null>(null)
 const loading = ref(true)
 const loadError = ref('')
@@ -110,6 +119,12 @@ const statusLabel = computed(() => requirement.value?.status
 const statusColor = computed(() => requirement.value?.status
   ? requirementStatusMeta(requirement.value.status).color
   : saveTypeMeta(requirement.value?.saveType ?? 'DRAFT').color)
+const versionChangeText = (change: VersionChange) => {
+  if (change.action === 'BIND') return `绑定至版本“${change.toVersionName || '未知版本'}”`
+  if (change.action === 'MIGRATE') return `从版本“${change.fromVersionName || '未知版本'}”迁移至“${change.toVersionName || '未知版本'}”`
+  return `解除版本“${change.fromVersionName || '未知版本'}”的绑定`
+}
+const versionChangeColor = (action: VersionChange['action']) => ({ BIND: 'blue', MIGRATE: 'orange', UNBIND: 'default' }[action])
 
 const clearPreviewRefresh = () => {
   if (previewRefreshTimer !== undefined) clearTimeout(previewRefreshTimer)
@@ -144,16 +159,18 @@ const loadRequirement = async () => {
     const systemRequest = isHandler.value
       ? api.get('/systems')
       : Promise.resolve({ data: [] as SystemItem[] })
-    const [detail, attachmentList, systemList, progressList] = await Promise.all([
+    const [detail, attachmentList, systemList, progressList, versionHistory] = await Promise.all([
       api.get(`/requirements/${requirementId.value}`),
       api.get(`/requirements/${requirementId.value}/attachments`),
       systemRequest,
       api.get(`/requirements/${requirementId.value}/progresses`),
+      api.get(`/requirements/${requirementId.value}/version-history`),
     ])
     requirement.value = detail.data
     attachments.value = Array.isArray(attachmentList.data) ? attachmentList.data : []
     systems.value = Array.isArray(systemList.data) ? systemList.data : []
     progresses.value = Array.isArray(progressList.data) ? progressList.data : []
+    versionChanges.value = Array.isArray(versionHistory.data) ? versionHistory.data : []
     schedulePreviewRefresh()
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status
@@ -318,6 +335,15 @@ onBeforeUnmount(clearPreviewRefresh)
           <section v-if="requirement.completionDescription" class="detail-section">
             <h2>完成情况</h2>
             <p class="detail-content">{{ requirement.completionDescription }}</p>
+          </section>
+          <section v-if="versionChanges.length" class="detail-section" data-test="version-history-section">
+            <h2>版本变更记录</h2>
+            <Timeline class="progress-timeline">
+              <TimelineItem v-for="change in versionChanges" :key="change.id" :color="versionChangeColor(change.action)">
+                <div class="progress-meta"><strong>{{ change.operatorName }}</strong><span>{{ formatShanghaiDateTime(change.createdAt) }}</span></div>
+                <p class="progress-content">{{ versionChangeText(change) }}</p>
+              </TimelineItem>
+            </Timeline>
           </section>
           <section class="detail-section">
             <h2>附件</h2>

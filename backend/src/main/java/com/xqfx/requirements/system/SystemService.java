@@ -3,6 +3,7 @@ package com.xqfx.requirements.system;
 import com.xqfx.requirements.requirement.RequirementRepository;
 import com.xqfx.requirements.user.UserEntity;
 import com.xqfx.requirements.user.UserRepository;
+import com.xqfx.requirements.requirement.SystemVersionRequirementService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
@@ -11,8 +12,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 @Service
 public class SystemService {
@@ -21,13 +20,15 @@ public class SystemService {
     private final SystemVersionRepository versions;
     private final RequirementRepository requirements;
     private final UserRepository users;
+    private final SystemVersionRequirementService versionRequirements;
 
     SystemService(SystemRepository repository, SystemVersionRepository versions, RequirementRepository requirements,
-                  UserRepository users) {
+                  UserRepository users, SystemVersionRequirementService versionRequirements) {
         this.repository = repository;
         this.versions = versions;
         this.requirements = requirements;
         this.users = users;
+        this.versionRequirements = versionRequirements;
     }
 
     @Transactional
@@ -87,8 +88,8 @@ public class SystemService {
     }
 
     @Transactional
-    SystemMigrationResponse migrate(Long sourceSystemId, Long targetSystemId) {
-        findActive(sourceSystemId);
+    SystemMigrationResponse migrate(Long sourceSystemId, Long targetSystemId, UserEntity actor) {
+        var sourceSystem = findActive(sourceSystemId);
         SystemEntity targetSystem = null;
         if (targetSystemId != null) {
             if (sourceSystemId.equals(targetSystemId)) {
@@ -99,11 +100,7 @@ public class SystemService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "迁移目标系统已停用");
             }
         }
-        var migratedCount = requirements.migrateSystemAndClearTargetVersion(
-                sourceSystemId,
-                targetSystem,
-                LocalDateTime.now(ZoneId.of("Asia/Shanghai"))
-        );
+        var migratedCount = versionRequirements.migrateSystem(sourceSystem, targetSystem, actor);
         return new SystemMigrationResponse(migratedCount);
     }
 

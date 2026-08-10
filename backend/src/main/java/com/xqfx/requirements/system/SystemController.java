@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import com.xqfx.requirements.user.CurrentUser;
 
 @RestController
 @RequestMapping("/api/systems")
@@ -49,7 +50,7 @@ class SystemController {
 
     @PostMapping("/{id}/migrate")
     SystemMigrationResponse migrate(@PathVariable Long id, @RequestBody MigrateSystemRequest request) {
-        return service.migrate(id, request.targetSystemId());
+        return service.migrate(id, request.targetSystemId(), CurrentUser.require());
     }
 
     @DeleteMapping("/{id}")

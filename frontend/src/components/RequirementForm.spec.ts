@@ -88,6 +88,15 @@ describe('RequirementForm AI import', () => {
     expect(wrapper.text()).not.toContain('暂无系统')
   })
 
+  it('does not ask the requester to choose a target version', () => {
+    const wrapper = shallowMount(RequirementForm, {
+      global: { renderStubDefaultSlot: true },
+    })
+
+    expect(wrapper.find('[data-test="version-select"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('目标版本')
+  })
+
   it('allows an ordinary user with a department to choose another department', () => {
     const wrapper = shallowMount(RequirementForm, {
       global: { renderStubDefaultSlot: true },
@@ -213,5 +222,39 @@ describe('RequirementEditor ordinary-user system selection', () => {
 
     expect(wrapper.find('[data-test="edit-form"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="edit-error"]').attributes('title')).toContain('当前状态不允许编辑')
+  })
+
+  it('shows an existing version as read-only instead of an editable selector', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/requirements/1') {
+        return Promise.resolve({ data: {
+          id: 1,
+          requesterUserId: 1,
+          requesterName: '普通用户',
+          departmentId: 1,
+          department: '产品部',
+          title: '已有版本需求',
+          typeId: 1,
+          type: '功能',
+          content: '内容',
+          status: 'CONFIRMED',
+          saveType: 'SUBMITTED',
+          systemId: 1,
+          targetVersionId: 9,
+          targetVersionName: '1.0',
+          recordVersion: 1,
+        } })
+      }
+      if (url === '/systems') return Promise.resolve({ data: [{ id: 1, name: '客服系统', status: 'ACTIVE' }] })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = shallowMount(RequirementEditor, {
+      props: { requirementId: 1 },
+      global: { renderStubDefaultSlot: true },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="current-version-display"]').text()).toContain('1.0')
+    expect(wrapper.find('[data-test="edit-version-select"]').exists()).toBe(false)
   })
 })
