@@ -73,7 +73,7 @@ const routes: RouteRecordRaw[] = [
     path: '/notifications',
     name: 'notification-center',
     component: NotificationCenter,
-    meta: protectedPage('notifications', '站内消息', '查看需求动态与待处理提醒。', ['HANDLER', 'ADMIN']),
+    meta: protectedPage('notifications', '站内消息', '查看需求动态与待处理提醒。'),
   },
   {
     path: '/systems',

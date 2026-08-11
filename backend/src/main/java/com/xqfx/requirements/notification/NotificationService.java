@@ -79,7 +79,7 @@ public class NotificationService {
 
     private static void assertCanReceiveNotifications(UserEntity recipient) {
         if (!recipient.canReceiveNotifications()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "普通用户不可使用站内消息");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前账号不可使用站内消息");
         }
     }
 }

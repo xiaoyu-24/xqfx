@@ -116,7 +116,7 @@ public class UserEntity {
     }
 
     public boolean canReceiveNotifications() {
-        return isHandler();
+        return !disabled;
     }
 
     public boolean isDisabled() {

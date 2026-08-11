@@ -32,7 +32,6 @@ app:
     preview-timeout-seconds: ${ATTACHMENTS_PREVIEW_TIMEOUT_SECONDS:60}
     preview-concurrency: ${ATTACHMENTS_PREVIEW_CONCURRENCY:2}
   ai:
-    encryption-key: ${AI_ENCRYPTION_KEY:}
     request-timeout-seconds: ${AI_REQUEST_TIMEOUT_SECONDS:30}
   notifications:
     reminder-cron: ${NOTIFICATIONS_REMINDER_CRON:0 0 9 * * *}

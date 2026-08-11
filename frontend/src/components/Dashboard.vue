@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Card, Empty, Tag } from 'ant-design-vue'
+import AppPagination from './AppPagination.vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { usePageRefresh } from '../composables/usePageRefresh'
@@ -25,11 +26,18 @@ interface WorkbenchData {
 
 const router = useRouter()
 const workbench = ref<WorkbenchData>({ owned: [], assisting: [] })
+const ownedPage = ref(1)
+const assistingPage = ref(1)
+const pageSize = 6
 const hasAssisting = computed(() => workbench.value.assisting.length > 0)
+const pagedOwned = computed(() => workbench.value.owned.slice((ownedPage.value - 1) * pageSize, ownedPage.value * pageSize))
+const pagedAssisting = computed(() => workbench.value.assisting.slice((assistingPage.value - 1) * pageSize, assistingPage.value * pageSize))
 
 const loadDashboard = async () => {
   const { data } = await api.get<WorkbenchData>('/dashboard/workbench')
   workbench.value = data
+  ownedPage.value = Math.min(ownedPage.value, Math.max(1, Math.ceil(data.owned.length / pageSize)))
+  assistingPage.value = Math.min(assistingPage.value, Math.max(1, Math.ceil(data.assisting.length / pageSize)))
 }
 
 const { loaded } = usePageRefresh('dashboard', loadDashboard)
@@ -55,22 +63,27 @@ const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('zh-CN', {
         <template #title>
           <span class="workbench-heading">我负责的系统需求 <span>共 {{ workbench.owned.length }} 条 · 全部未完结</span></span>
         </template>
-        <div v-if="workbench.owned.length" class="workbench-list">
-          <button v-for="item in workbench.owned" :key="item.id" class="workbench-row" type="button" @click="openRequirement(item.id)">
-            <span class="workbench-main">
-              <span class="workbench-title">{{ item.title || '未命名需求' }}</span>
-              <span class="workbench-meta">
-                <span class="workbench-system">{{ item.systemName }}</span>
-                <span>提出人：{{ item.requesterName || '—' }}</span>
-                <span>更新于 {{ formatUpdatedAt(item.updatedAt) }}</span>
+        <template v-if="workbench.owned.length">
+          <div class="workbench-list">
+            <button v-for="item in pagedOwned" :key="item.id" class="workbench-row" type="button" @click="openRequirement(item.id)">
+              <span class="workbench-main">
+                <span class="workbench-title">{{ item.title || '未命名需求' }}</span>
+                <span class="workbench-meta">
+                  <span class="workbench-system">{{ item.systemName }}</span>
+                  <span>提出人：{{ item.requesterName || '—' }}</span>
+                  <span>更新于 {{ formatUpdatedAt(item.updatedAt) }}</span>
+                </span>
               </span>
-            </span>
-            <span class="workbench-right">
-              <span class="urgency-chip" :class="`urgency-${item.urgency.toLowerCase()}`">{{ urgencyMeta(item.urgency).label }}</span>
-              <Tag class="status-tag" :color="requirementStatusMeta(item.status).color"><span></span>{{ requirementStatusMeta(item.status).label }}</Tag>
-            </span>
-          </button>
-        </div>
+              <span class="workbench-right">
+                <span class="urgency-chip" :class="`urgency-${item.urgency.toLowerCase()}`">{{ urgencyMeta(item.urgency).label }}</span>
+                <Tag class="status-tag" :color="requirementStatusMeta(item.status).color"><span></span>{{ requirementStatusMeta(item.status).label }}</Tag>
+              </span>
+            </button>
+          </div>
+          <div v-if="workbench.owned.length > pageSize" class="workbench-pagination">
+            <AppPagination v-model:current="ownedPage" :page-size="pageSize" :total="workbench.owned.length" :show-size-changer="false" :show-less-items="true" responsive />
+          </div>
+        </template>
         <Empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="暂无待处理需求" />
       </Card>
 
@@ -79,13 +92,16 @@ const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('zh-CN', {
           <span class="workbench-heading assist-heading">我协助处理的 <span>{{ workbench.assisting.length }} 条</span></span>
         </template>
         <div class="assisting-list">
-          <button v-for="item in workbench.assisting" :key="item.id" class="assisting-row" type="button" @click="openRequirement(item.id)">
+          <button v-for="item in pagedAssisting" :key="item.id" class="assisting-row" type="button" @click="openRequirement(item.id)">
             <span class="workbench-main">
               <span class="workbench-title">{{ item.title || '未命名需求' }}</span>
               <span class="workbench-meta"><span class="workbench-system">{{ item.systemName }}</span><span>更新于 {{ formatUpdatedAt(item.updatedAt) }}</span></span>
             </span>
             <Tag class="status-tag" :color="requirementStatusMeta(item.status).color"><span></span>{{ requirementStatusMeta(item.status).label }}</Tag>
           </button>
+        </div>
+        <div v-if="workbench.assisting.length > pageSize" class="workbench-pagination">
+          <AppPagination v-model:current="assistingPage" :page-size="pageSize" :total="workbench.assisting.length" :show-size-changer="false" :show-less-items="true" responsive />
         </div>
       </Card>
     </div>
@@ -140,7 +156,8 @@ const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('zh-CN', {
 .workbench-heading span { color: rgba(0, 0, 0, 0.45); font-size: 12px; font-weight: 400; }
 .assist-heading::before { background: #b37feb; }
 
-.workbench-list { max-height: 536px; overflow-y: auto; overscroll-behavior: contain; }
+.workbench-list { min-height: 0; }
+.workbench-pagination { display: flex; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid #f0f0f0; }
 
 .workbench-row,
 .assisting-row {

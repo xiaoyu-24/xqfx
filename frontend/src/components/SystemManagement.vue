@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Button, Card, Empty, Form, FormItem, Input, Modal, Popconfirm, Select, Tag, message } from 'ant-design-vue'
+import AppPagination from './AppPagination.vue'
 import { TagsOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
@@ -51,6 +52,10 @@ const nameFilter = ref('')
 const ownerFilter = ref('')
 const collaboratorFilter = ref('')
 const statusFilter = ref('')
+const systemPage = ref(1)
+const versionPage = ref(1)
+const systemPageSize = 5
+const versionPageSize = 5
 const systemFormMode = ref<'create' | 'edit' | null>(null)
 const systemForm = reactive({ id: 0, name: '', ownerUserId: undefined as number | undefined, collaboratorUserIds: [] as number[], recordVersion: 0 })
 const versionFormMode = ref<'create' | 'edit' | null>(null)
@@ -80,6 +85,18 @@ const filteredSystems = computed(() => {
     const matchesStatus = !statusFilter.value || system.status === statusFilter.value
     return matchesName && matchesOwner && matchesCollaborator && matchesStatus
   })
+})
+const systemTotalPages = computed(() => Math.max(1, Math.ceil(filteredSystems.value.length / systemPageSize)))
+const versionTotalPages = computed(() => Math.max(1, Math.ceil(versions.value.length / versionPageSize)))
+const pagedSystems = computed(() => filteredSystems.value.slice((systemPage.value - 1) * systemPageSize, systemPage.value * systemPageSize))
+const pagedVersions = computed(() => versions.value.slice((versionPage.value - 1) * versionPageSize, versionPage.value * versionPageSize))
+
+watch([nameFilter, ownerFilter, collaboratorFilter, statusFilter], () => { systemPage.value = 1 })
+watch(() => filteredSystems.value.length, () => {
+  systemPage.value = Math.min(systemPage.value, systemTotalPages.value)
+})
+watch(() => versions.value.length, () => {
+  versionPage.value = Math.min(versionPage.value, versionTotalPages.value)
 })
 const migrationTargets = computed(() => systems.value.filter((system) => system.id !== migrationSourceId.value && system.status === 'ACTIVE'))
 const systemFormOpen = computed({
@@ -121,9 +138,10 @@ const loadVersions = async (systemId: number) => {
   }
 }
 
-const selectSystem = async (systemId: number) => {
+const selectSystem = async (systemId: number, resetVersionPage = true) => {
   selectedSystemId.value = systemId
   versionFormMode.value = null
+  if (resetVersionPage) versionPage.value = 1
   await loadVersions(systemId)
 }
 
@@ -137,7 +155,7 @@ const refreshWorkspace = async () => {
     versionFormMode.value = null
     return
   }
-  await selectSystem(nextSystemId)
+  await selectSystem(nextSystemId, false)
 }
 
 const showCreateSystem = () => {
@@ -177,10 +195,14 @@ const saveSystem = async () => {
     return
   }
   const body = { name: systemForm.name.trim(), ownerUserId, collaboratorUserIds: systemForm.collaboratorUserIds }
+  let createdSystemId: number | null = null
   try {
     if (systemFormMode.value === 'create') {
       const { data } = await api.post('/systems', body)
-      if (Number.isInteger(data?.id)) selectedSystemId.value = data.id
+      if (Number.isInteger(data?.id)) {
+        selectedSystemId.value = data.id
+        createdSystemId = data.id
+      }
       message.success('新增系统成功')
     } else {
       await api.put(`/systems/${systemForm.id}`, { ...body, recordVersion: systemForm.recordVersion })
@@ -188,6 +210,10 @@ const saveSystem = async () => {
     }
     systemFormMode.value = null
     await refreshWorkspace()
+    if (createdSystemId !== null) {
+      const createdIndex = filteredSystems.value.findIndex((system) => system.id === createdSystemId)
+      if (createdIndex >= 0) systemPage.value = Math.floor(createdIndex / systemPageSize) + 1
+    }
     markChanged(['requirements', 'versions', 'dashboard', 'overview'])
   } catch (error: unknown) {
     const details = applyServerErrors(error)
@@ -271,10 +297,12 @@ const saveVersion = async () => {
   }
   const systemId = selectedSystemId.value
   if (systemId === null) return
+  let createdVersionId: number | null = null
   try {
     const body = { name: versionForm.name.trim(), description: versionForm.description.trim() || null }
     if (versionFormMode.value === 'create') {
-      await api.post(`/systems/${systemId}/versions`, body)
+      const { data } = await api.post(`/systems/${systemId}/versions`, body)
+      if (Number.isInteger(data?.id)) createdVersionId = data.id
       message.success('新增版本成功')
     } else {
       await api.put(`/system-versions/${versionForm.id}`, { ...body, recordVersion: versionForm.recordVersion })
@@ -282,6 +310,10 @@ const saveVersion = async () => {
     }
     versionFormMode.value = null
     await refreshWorkspace()
+    if (createdVersionId !== null) {
+      const createdIndex = versions.value.findIndex((version) => version.id === createdVersionId)
+      if (createdIndex >= 0) versionPage.value = Math.floor(createdIndex / versionPageSize) + 1
+    }
     markChanged(['requirements', 'dashboard', 'overview'])
   } catch (error: unknown) {
     const details = applyServerErrors(error)
@@ -335,18 +367,21 @@ const { loaded } = usePageRefresh('systems', refreshWorkspace)
           <Input v-model:value="collaboratorFilter" data-test="collaborator-filter" allow-clear placeholder="按协助人筛选" />
         </div>
         <div :class="{ 'is-panel-loading': loading }">
-          <div v-if="filteredSystems.length" class="system-card-list">
-            <article v-for="system in filteredSystems" :key="system.id" class="system-card" :class="{ selected: selectedSystemId === system.id }" tabindex="0" @click="selectSystem(system.id)" @keydown.enter="selectSystem(system.id)">
-              <div class="system-card-title-row"><strong>{{ system.name }}</strong><Tag :color="entityStatusMeta(system.status).color">{{ entityStatusMeta(system.status).label }}</Tag></div>
-              <div class="system-card-meta"><span>负责人 <b>{{ system.ownerName || '—' }}</b></span><span>协助人 <b>{{ system.collaborators.join('、') || '—' }}</b></span><span>版本 <b>{{ system.versionCount }}</b></span><span>关联需求 <b>{{ system.requirementCount }}</b></span></div>
-              <div class="system-card-actions" @click.stop>
-                <Button v-if="isHandler" type="link" size="small" :data-test="`edit-system-${system.id}`" @click="showEditSystem(system)">编辑</Button>
-                <Button type="link" size="small" :data-test="`view-requirements-${system.id}`" @click="viewRequirements(system.id)">查看需求</Button>
-                <Button v-if="isHandler" type="link" size="small" :data-test="`toggle-system-${system.id}`" @click="toggleSystem(system)">{{ system.status === 'ACTIVE' ? '停用' : '启用' }}</Button>
-                <Popconfirm v-if="isHandler" :title="`确定删除系统“${system.name}”吗？`" ok-text="删除" cancel-text="取消" @confirm="deleteSystem(system)"><Button danger type="link" size="small">删除</Button></Popconfirm>
-              </div>
-            </article>
-          </div>
+          <template v-if="filteredSystems.length">
+            <div class="system-card-list">
+              <article v-for="system in pagedSystems" :key="system.id" class="system-card" :class="{ selected: selectedSystemId === system.id }" tabindex="0" @click="selectSystem(system.id)" @keydown.enter="selectSystem(system.id)">
+                <div class="system-card-title-row"><strong>{{ system.name }}</strong><Tag :color="entityStatusMeta(system.status).color">{{ entityStatusMeta(system.status).label }}</Tag></div>
+                <div class="system-card-meta"><span>负责人 <b>{{ system.ownerName || '—' }}</b></span><span>协助人 <b>{{ system.collaborators.join('、') || '—' }}</b></span><span>版本 <b>{{ system.versionCount }}</b></span><span>关联需求 <b>{{ system.requirementCount }}</b></span></div>
+                <div class="system-card-actions" @click.stop>
+                  <Button v-if="isHandler" type="link" size="small" :data-test="`edit-system-${system.id}`" @click="showEditSystem(system)">编辑</Button>
+                  <Button type="link" size="small" :data-test="`view-requirements-${system.id}`" @click="viewRequirements(system.id)">查看需求</Button>
+                  <Button v-if="isHandler" type="link" size="small" :data-test="`toggle-system-${system.id}`" @click="toggleSystem(system)">{{ system.status === 'ACTIVE' ? '停用' : '启用' }}</Button>
+                  <Popconfirm v-if="isHandler" :title="`确定删除系统“${system.name}”吗？`" ok-text="删除" cancel-text="取消" @confirm="deleteSystem(system)"><Button danger type="link" size="small">删除</Button></Popconfirm>
+                </div>
+              </article>
+            </div>
+            <div class="pagination-row"><span>共 {{ filteredSystems.length }} 个</span><AppPagination v-model:current="systemPage" :page-size="systemPageSize" :total="filteredSystems.length" :show-size-changer="false" :show-less-items="true" responsive /></div>
+          </template>
           <Empty v-else-if="!loading" class="workspace-empty" description="暂无符合条件的系统" />
         </div>
       </Card>
@@ -359,14 +394,17 @@ const { loaded } = usePageRefresh('systems', refreshWorkspace)
         <template v-if="selectedSystem">
           <div class="current-system-notice">当前系统：<strong>{{ selectedSystem.name }}</strong><span>点击左侧其他系统可切换</span></div>
           <div :class="{ 'is-panel-loading': versionLoading }">
-            <div v-if="versions.length" class="version-card-list">
-              <article v-for="version in versions" :key="version.id" class="version-card">
-                <span class="version-icon"><TagsOutlined /></span>
-                <div class="version-main"><strong>{{ version.name }}</strong><span class="version-description">{{ version.description || '暂无版本说明' }}</span><span>关联需求 {{ version.requirementCount }} 条</span></div>
-                <Tag :color="entityStatusMeta(version.status).color">{{ entityStatusMeta(version.status).label }}</Tag>
-                <div v-if="isHandler" class="version-card-actions"><Button type="link" size="small" @click="manageVersionRequirements(version.id)">管理需求</Button><Button type="link" size="small" @click="showEditVersion(version)">编辑</Button><Button type="link" size="small" @click="toggleVersion(version)">{{ version.status === 'ACTIVE' ? '停用' : '启用' }}</Button><Popconfirm :title="`确定删除版本“${version.name}”吗？`" ok-text="删除" cancel-text="取消" @confirm="deleteVersion(version)"><Button danger type="link" size="small">删除</Button></Popconfirm></div>
-              </article>
-            </div>
+            <template v-if="versions.length">
+              <div class="version-card-list">
+                <article v-for="version in pagedVersions" :key="version.id" class="version-card">
+                  <span class="version-icon"><TagsOutlined /></span>
+                  <div class="version-main"><strong>{{ version.name }}</strong><span class="version-description">{{ version.description || '暂无版本说明' }}</span><span>关联需求 {{ version.requirementCount }} 条</span></div>
+                  <Tag :color="entityStatusMeta(version.status).color">{{ entityStatusMeta(version.status).label }}</Tag>
+                  <div v-if="isHandler" class="version-card-actions"><Button type="link" size="small" @click="manageVersionRequirements(version.id)">管理需求</Button><Button type="link" size="small" @click="showEditVersion(version)">编辑</Button><Button type="link" size="small" @click="toggleVersion(version)">{{ version.status === 'ACTIVE' ? '停用' : '启用' }}</Button><Popconfirm :title="`确定删除版本“${version.name}”吗？`" ok-text="删除" cancel-text="取消" @confirm="deleteVersion(version)"><Button danger type="link" size="small">删除</Button></Popconfirm></div>
+                </article>
+              </div>
+              <div class="pagination-row"><span>共 {{ versions.length }} 个</span><AppPagination v-model:current="versionPage" :page-size="versionPageSize" :total="versions.length" :show-size-changer="false" :show-less-items="true" responsive /></div>
+            </template>
             <Empty v-else-if="!versionLoading" class="workspace-empty" description="暂无版本，请新增。" />
           </div>
         </template>
@@ -413,6 +451,7 @@ const { loaded } = usePageRefresh('systems', refreshWorkspace)
 .panel-count { color: rgba(0, 0, 0, 0.45); font-size: 12px; }
 .systems-filter-bar { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) 116px minmax(130px, 1fr); gap: 10px; padding: 14px 20px; border-bottom: 1px solid #f0f0f0; }
 .system-card-list, .version-card-list { display: grid; gap: 8px; padding: 8px 12px 12px; }
+.pagination-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border-top: 1px solid #f0f0f0; color: rgba(0, 0, 0, .45); font-size: 13px; }
 .system-card { position: relative; padding: 14px 16px; border: 1px solid #f0f0f0; border-radius: 8px; cursor: pointer; outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
 .system-card:hover, .system-card:focus-visible { border-color: #91caff; }
 .system-card.selected { border-color: #1677ff; background: linear-gradient(180deg, #f7fbff, #fff); box-shadow: 0 2px 10px rgb(22 119 255 / 12%); }
@@ -435,6 +474,6 @@ const { loaded } = usePageRefresh('systems', refreshWorkspace)
 .workspace-empty, .version-empty { padding: 40px 0; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 @media (max-width: 1200px) { .system-workspace { grid-template-columns: 1fr; } }
-@media (max-width: 768px) { .systems-filter-bar { grid-template-columns: 1fr 1fr; padding: 12px 16px; } .workspace-panel-header { padding: 14px 16px; } .current-system-notice { margin-inline: 16px; } .version-card { align-items: flex-start; flex-wrap: wrap; } .version-card-actions { width: 100%; } }
+@media (max-width: 768px) { .systems-filter-bar { grid-template-columns: 1fr 1fr; padding: 12px 16px; } .workspace-panel-header { padding: 14px 16px; } .current-system-notice { margin-inline: 16px; } .version-card { align-items: flex-start; flex-wrap: wrap; } .version-card-actions { width: 100%; } .pagination-row { align-items: flex-start; flex-direction: column; } }
 @media (max-width: 480px) { .systems-filter-bar { grid-template-columns: 1fr; } .system-card, .version-card { padding: 12px; } .system-card-actions { margin-inline: -4px; } }
 </style>

@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Button, Card, Empty, Pagination, Segmented, Tag, message } from 'ant-design-vue'
-import { BellOutlined, CheckOutlined, ClockCircleOutlined, ExclamationCircleOutlined, FileTextOutlined, SyncOutlined } from '@ant-design/icons-vue'
+import { Button, Card, Empty, Segmented, Tag, message } from 'ant-design-vue'
+import AppPagination from './AppPagination.vue'
+import { BellOutlined, CheckOutlined, ClockCircleOutlined, ExclamationCircleOutlined, FileTextOutlined, MessageOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { useNotifications } from '../composables/useNotifications'
 import { usePageRefresh } from '../composables/usePageRefresh'
 import ContentSkeleton from './ContentSkeleton.vue'
 
-type NotificationType = 'NEW_REQUIREMENT' | 'ASSIGNED' | 'STATUS_CHANGED' | 'OVERDUE' | 'STALE'
+type NotificationType = 'NEW_REQUIREMENT' | 'ASSIGNED' | 'STATUS_CHANGED' | 'PROGRESS_UPDATED' | 'OVERDUE' | 'STALE'
 type NotificationItem = {
   id: number
   type: NotificationType
@@ -46,6 +47,7 @@ const typeMeta = (type: NotificationType) => ({
   NEW_REQUIREMENT: { label: '新需求', color: 'blue', icon: FileTextOutlined },
   ASSIGNED: { label: '待处理', color: 'purple', icon: BellOutlined },
   STATUS_CHANGED: { label: '状态更新', color: 'cyan', icon: SyncOutlined },
+  PROGRESS_UPDATED: { label: '进度更新', color: 'green', icon: MessageOutlined },
   OVERDUE: { label: '已超期', color: 'red', icon: ExclamationCircleOutlined },
   STALE: { label: '无进展', color: 'orange', icon: ClockCircleOutlined },
 }[type])
@@ -158,7 +160,7 @@ const { loaded, refresh } = usePageRefresh('notifications', async () => {
       <Empty v-else-if="!loading" :description="unreadOnly ? '暂无未读消息' : '暂无站内消息'" />
 
       <div v-if="total > pageSize" class="notification-pagination">
-        <Pagination :current="page + 1" :page-size="pageSize" :total="total" :show-size-changer="false" @change="changePage" />
+        <AppPagination :current="page + 1" :page-size="pageSize" :total="total" :show-size-changer="false" @change="changePage" />
       </div>
     </Card>
     </template>

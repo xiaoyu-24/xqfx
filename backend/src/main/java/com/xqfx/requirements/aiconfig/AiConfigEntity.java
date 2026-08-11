@@ -34,8 +34,8 @@ class AiConfigEntity {
     @Column(length = 200)
     private String modelName;
 
-    @Column(length = 1000)
-    private String apiKeyEncrypted;
+    @Column(name = "api_key", length = 1000)
+    private String apiKey;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
@@ -56,7 +56,7 @@ class AiConfigEntity {
     boolean isActive() { return isActive; }
     String serviceUrl() { return serviceUrl; }
     String modelName() { return modelName; }
-    String apiKeyEncrypted() { return apiKeyEncrypted; }
+    String apiKey() { return apiKey; }
 
     void update(String name, boolean enabled, String serviceUrl, String modelName) {
         this.name = name;
@@ -65,8 +65,8 @@ class AiConfigEntity {
         this.modelName = modelName;
     }
 
-    void updateApiKeyEncrypted(String encrypted) {
-        this.apiKeyEncrypted = encrypted;
+    void updateApiKey(String apiKey) {
+        this.apiKey = apiKey;
     }
 
     void activate() { this.isActive = true; }

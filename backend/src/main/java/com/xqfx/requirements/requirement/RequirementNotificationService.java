@@ -58,16 +58,26 @@ class RequirementNotificationService {
                 java.util.List.of(assignee), actor);
     }
 
-    void onStatusChanged(RequirementEntity requirement, RequirementProgressEntity progress, UserEntity actor) {
+    void onProgressAdded(RequirementEntity requirement, RequirementProgressEntity progress,
+                         boolean statusChanged, UserEntity actor) {
         var requester = requirement.requesterUser();
         if (requester == null) {
             return;
         }
-        var status = progress.status();
+
+        var title = titleOf(requirement);
+        var progressSummary = summarizeProgress(progress.content());
+        var type = statusChanged ? NotificationType.STATUS_CHANGED : NotificationType.PROGRESS_UPDATED;
+        var notificationTitle = statusChanged ? "需求状态和进度已更新" : "需求有新的进度更新";
+        var content = statusChanged
+                ? "需求《" + title + "》状态已更新为“" + statusLabel(progress.status())
+                        + "”。进度：" + progressSummary
+                : "需求《" + title + "》有新的进度更新：" + progressSummary;
+        var eventKey = (statusChanged ? "status-changed:" : "progress-updated:")
+                + requirement.id() + ":" + progress.id();
+
         publishExcludingActor(
-                NotificationEvent.inApp(NotificationType.STATUS_CHANGED, requirement.id(),
-                        "需求状态已更新", "需求《" + titleOf(requirement) + "》状态已更新为“" + statusLabel(status) + "”。",
-                        "status-changed:" + requirement.id() + ":" + progress.id()),
+                NotificationEvent.inApp(type, requirement.id(), notificationTitle, truncate(content, 500), eventKey),
                 java.util.List.of(requester), actor);
     }
 
@@ -153,6 +163,15 @@ class RequirementNotificationService {
 
     private static String titleOf(RequirementEntity requirement) {
         return requirement.title() == null || requirement.title().isBlank() ? "未命名需求" : requirement.title();
+    }
+
+    private static String summarizeProgress(String content) {
+        var normalized = content == null ? "" : content.replaceAll("\\s+", " ").trim();
+        return normalized.isEmpty() ? "已更新需求进度。" : truncate(normalized, 200);
+    }
+
+    private static String truncate(String value, int maxLength) {
+        return value.length() <= maxLength ? value : value.substring(0, maxLength - 1) + "…";
     }
 
     private static String statusLabel(RequirementStatus status) {

@@ -149,9 +149,7 @@ class RequirementService {
         }
         var progress = progresses.save(new RequirementProgressEntity(
                 requirement, author.id(), author.displayName(), content.trim(), status));
-        if (statusChanged) {
-            notifications.onStatusChanged(requirement, progress, author);
-        }
+        notifications.onProgressAdded(requirement, progress, statusChanged, author);
         return RequirementProgressResponse.from(progress);
     }
 

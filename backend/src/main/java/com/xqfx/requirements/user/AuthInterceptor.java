@@ -28,10 +28,9 @@ class AuthInterceptor implements HandlerInterceptor {
             "/api/dictionaries/active",
     };
 
-    /** 普通用户不可访问的工作台和通知接口。 */
+    /** 普通用户不可访问的处理工作台接口。 */
     private static final String[] HANDLER_ONLY_PREFIXES = {
             "/api/dashboard",
-            "/api/notifications",
     };
 
     /** 系统和版本允许普通用户读取，但写操作仅限需求处理员和管理员。 */

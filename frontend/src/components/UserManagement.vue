@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Button, Card, Empty, Input, Modal, Select, SelectOption, Table, Tag, message } from 'ant-design-vue'
+import AppPagination from './AppPagination.vue'
 import { CheckCircleOutlined, EditOutlined, LockOutlined, PlusOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
-import { useDictionaryOptions } from '../composables/useDictionaryOptions'
+import { useDictionaryOptions, type DictionaryItem } from '../composables/useDictionaryOptions'
 import { usePageRefresh } from '../composables/usePageRefresh'
 import ContentSkeleton from './ContentSkeleton.vue'
 import type { UserRole } from '../composables/useAuth'
@@ -35,6 +36,10 @@ const saving = ref(false)
 const search = ref('')
 const roleFilter = ref<UserRole | ''>('')
 const statusFilter = ref<'ACTIVE' | 'DISABLED' | ''>('')
+const departmentFilter = ref<number | 'UNASSIGNED' | ''>('')
+const allDepartments = ref<DictionaryItem[]>([])
+const currentPage = ref(1)
+const pageSize = 10
 
 const form = reactive({
   username: '',
@@ -44,6 +49,14 @@ const form = reactive({
 })
 
 const { departments, loadDictionaryOptions } = useDictionaryOptions()
+const departmentFilterOptions = computed(() => [
+  { label: '全部部门', value: '' },
+  { label: '未设置部门', value: 'UNASSIGNED' },
+  ...allDepartments.value.map((department) => ({
+    label: department.disabled ? `${department.name}（已停用）` : department.name,
+    value: department.id,
+  })),
+])
 
 const columns = [
   { title: '人员', key: 'person', width: 220 },
@@ -62,8 +75,20 @@ const filteredUsers = computed(() => {
     const matchKeyword = !keyword || user.username.toLowerCase().includes(keyword) || user.displayName.toLowerCase().includes(keyword)
     const matchRole = !roleFilter.value || user.role === roleFilter.value
     const matchStatus = !statusFilter.value || (statusFilter.value === 'DISABLED' ? user.disabled : !user.disabled)
-    return matchKeyword && matchRole && matchStatus
+    const matchDepartment = departmentFilter.value === ''
+      || (departmentFilter.value === 'UNASSIGNED' ? user.departmentId === null : user.departmentId === departmentFilter.value)
+    return matchKeyword && matchRole && matchStatus && matchDepartment
   })
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredUsers.value.length / pageSize)))
+const pagedUsers = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredUsers.value.slice(start, start + pageSize)
+})
+
+watch([search, roleFilter, statusFilter, departmentFilter], () => { currentPage.value = 1 })
+watch(() => filteredUsers.value.length, () => {
+  currentPage.value = Math.min(currentPage.value, totalPages.value)
 })
 
 const roleHint = computed(() => {
@@ -74,7 +99,7 @@ const roleHint = computed(() => {
 
 const roleChangeWarning = computed(() => {
   if (!editingUser.value || editingUser.value.role === form.role) return ''
-  if (form.role === 'USER') return '降级为普通用户后，将不能访问工作台、通知和系统管理；若仍绑定系统负责人或协助人，保存会被拦截。'
+  if (form.role === 'USER') return '降级为普通用户后，将不能访问处理工作台，但仍可查看自己的需求和站内通知；若仍绑定系统负责人或协助人，保存会被拦截。'
   if (editingUser.value.role === 'USER') return '升级后可查看、编辑全部需求，并可被设置为系统负责人或协助人。'
   return '角色变更会立即影响该账号下次请求的菜单与接口权限。'
 })
@@ -91,8 +116,13 @@ const loadUsers = async () => {
   }
 }
 
+const loadAllDepartments = async () => {
+  const { data } = await api.get<DictionaryItem[]>('/dictionaries', { params: { category: 'DEPARTMENT' } })
+  allDepartments.value = Array.isArray(data) ? data : []
+}
+
 const loadUsersAndDictionaries = async () => {
-  await Promise.all([loadUsers(), loadDictionaryOptions()])
+  await Promise.all([loadUsers(), loadDictionaryOptions(), loadAllDepartments()])
 }
 const { loaded, refresh, refreshing, lastUpdatedAt } = usePageRefresh('users', loadUsersAndDictionaries)
 const lastUpdatedLabel = computed(() => lastUpdatedAt.value
@@ -131,6 +161,7 @@ const handleSave = async () => {
     return
   }
   saving.value = true
+  const creatingUser = editingId.value === null
   try {
     const payload = {
       username: form.username.trim(),
@@ -138,7 +169,7 @@ const handleSave = async () => {
       departmentId: form.departmentId ? Number(form.departmentId) : null,
       role: form.role,
     }
-    if (editingId.value === null) {
+    if (creatingUser) {
       await api.post('/users', payload)
       modalOpen.value = false
       Modal.success({
@@ -152,6 +183,10 @@ const handleSave = async () => {
       message.success('人员信息已更新')
     }
     await refresh()
+    if (creatingUser) {
+      const createdIndex = filteredUsers.value.findIndex((user) => user.username === payload.username)
+      currentPage.value = createdIndex >= 0 ? Math.floor(createdIndex / pageSize) + 1 : totalPages.value
+    }
   } catch (error: unknown) {
     const data = (error as { response?: { data?: { message?: string } } })?.response?.data
     const msg = data?.message && data.message.trim().length > 0 ? data.message : '保存人员失败'
@@ -222,8 +257,9 @@ const handleToggleDisabled = async (user: Pick<User, 'id' | 'disabled'>) => {
         <Input v-model:value="search" class="search-input" allow-clear placeholder="按账号 / 姓名筛选" />
         <Select v-model:value="roleFilter" class="role-filter" allow-clear placeholder="全部角色" :options="[{ label: '全部角色', value: '' }, ...Object.entries(roleMeta).map(([value, meta]) => ({ label: meta.label, value }))]" />
         <Select v-model:value="statusFilter" class="status-filter" allow-clear placeholder="全部状态" :options="[{ label: '全部状态', value: '' }, { label: '正常', value: 'ACTIVE' }, { label: '已停用', value: 'DISABLED' }]" />
+        <Select v-model:value="departmentFilter" class="department-filter" placeholder="全部部门" :options="departmentFilterOptions" show-search option-filter-prop="label" />
       </div>
-      <Table :columns="columns" :data-source="filteredUsers" row-key="id" :pagination="false" :scroll="{ x: 900 }">
+      <Table :columns="columns" :data-source="pagedUsers" row-key="id" :pagination="false" :scroll="{ x: 900 }">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'person'">
             <div class="person-cell"><span class="person-avatar">{{ record.displayName.slice(0, 1) }}</span><span><strong>{{ record.displayName }}</strong><small>{{ record.username }}</small></span></div>
@@ -242,6 +278,10 @@ const handleToggleDisabled = async (user: Pick<User, 'id' | 'disabled'>) => {
         </template>
         <template #emptyText><Empty description="暂无匹配人员" /></template>
       </Table>
+      <div v-if="filteredUsers.length" class="pagination-row">
+        <span>共 {{ filteredUsers.length }} 人</span>
+        <AppPagination v-model:current="currentPage" :page-size="pageSize" :total="filteredUsers.length" :show-size-changer="false" :show-less-items="true" responsive />
+      </div>
     </Card>
 
     <Modal v-model:open="modalOpen" :title="modalTitle" :confirm-loading="saving" width="560px" @ok="handleSave">
@@ -273,6 +313,8 @@ const handleToggleDisabled = async (user: Pick<User, 'id' | 'disabled'>) => {
 .users-filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -8px -24px 16px; padding: 14px 24px; border-bottom: 1px solid #f0f0f0; }
 .search-input { width: 220px; }
 .role-filter, .status-filter { width: 140px; }
+.department-filter { width: 180px; }
+.pagination-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border-top: 1px solid #f0f0f0; color: rgba(0, 0, 0, .45); font-size: 13px; }
 .person-cell { display: flex; align-items: center; gap: 10px; }
 .person-cell strong, .person-cell small { display: block; }
 .person-cell strong { font-weight: 500; }
@@ -297,5 +339,5 @@ const handleToggleDisabled = async (user: Pick<User, 'id' | 'disabled'>) => {
 .selected .radio::after { width: 7px; height: 7px; border-radius: 50%; background: #1677ff; content: ''; }
 .role-option-desc { display: block; margin-top: 6px; color: rgba(0, 0, 0, 0.45); font-size: 11.5px; line-height: 1.6; }
 .role-hint { margin: 10px 0 0; padding: 8px 12px; border: 1px solid #ffd591; border-radius: 8px; background: #fff7e6; color: #d46b08; font-size: 12px; }
-@media (max-width: 680px) { .users-toolbar-head { flex-direction: column; } .users-toolbar-actions { width: 100%; } .users-toolbar-actions :deep(.ant-btn-primary) { margin-left: auto; } .users-updated-at { display: none; } .users-filter-bar { margin-right: -16px; margin-left: -16px; padding-right: 16px; padding-left: 16px; } .search-input, .role-filter, .status-filter { width: 100%; } .role-picker { grid-template-columns: 1fr; } }
+@media (max-width: 680px) { .users-toolbar-head { flex-direction: column; } .users-toolbar-actions { width: 100%; } .users-toolbar-actions :deep(.ant-btn-primary) { margin-left: auto; } .users-updated-at { display: none; } .users-filter-bar { margin-right: -16px; margin-left: -16px; padding-right: 16px; padding-left: 16px; } .search-input, .role-filter, .status-filter, .department-filter { width: 100%; } .pagination-row { align-items: flex-start; flex-direction: column; } .role-picker { grid-template-columns: 1fr; } }
 </style>

@@ -36,3 +36,6 @@ test-results/
 *.iml
 .DS_Store
 Thumbs.db
+
+# Image files
+*.png

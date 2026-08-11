@@ -23,7 +23,6 @@ $env:ATTACHMENTS_PREVIEW_ROOT='D:\requirements-platform\previews'
 $env:LIBREOFFICE_EXECUTABLE='C:\Program Files\LibreOffice\program\soffice.exe'
 $env:ATTACHMENTS_PREVIEW_TIMEOUT_SECONDS='60'
 $env:ATTACHMENTS_PREVIEW_CONCURRENCY='2'
-$env:AI_ENCRYPTION_KEY='请设置Base64编码的16、24或32字节AES密钥'
 $env:AI_REQUEST_TIMEOUT_SECONDS='30' # 可选：AI 服务请求超时秒数
 Set-Location backend
 mvn clean package
@@ -34,9 +33,11 @@ CentOS 7/宝塔部署模板见 [`deploy/centos7`](../deploy/centos7)。生产环
 
 前后端分域名部署时采用同源代理方式：前端继续使用 `/api`，前端域名的 Nginx 将 `/api` 代理到本机 8080；后端 API 域名可作为独立运维访问入口。这样浏览器不发生跨域请求，不需要配置 CORS 或 `VITE_API_BASE_URL`。
 
-Flyway 会自动执行 V1–V9 迁移，包括需求处理信息、附件预览字段和 AI 配置表。应用账号需要数据库、表和索引的创建/变更权限；日常运行时建议改用仅数据读写权限的账号。
+Flyway 会自动执行所有待执行迁移，包括需求处理信息、附件预览字段和 AI 配置表。应用账号需要数据库、表和索引的创建/变更权限；日常运行时建议改用仅数据读写权限的账号。
 
-AI 配置在页面中维护 OpenAI 兼容服务地址、模型和 API Key。`AI_ENCRYPTION_KEY` 必须由部署环境提供，用于加密数据库中的 API Key；它必须是 Base64 编码后的 16、24 或 32 字节 AES 密钥，不能提交到仓库或写入前端配置。读取 AI 配置时接口只会显示 API Key 的前后各 4 位，完整密钥不会返回给浏览器。
+AI 配置在页面中维护 OpenAI 兼容服务地址、模型和 API Key。API Key 以明文保存在数据库中，因此必须严格限制数据库账号、数据库备份和服务器文件的访问权限。读取 AI 配置时接口只会显示 API Key 的前后各 4 位，完整密钥不会返回给浏览器。
+
+升级到包含 V21 迁移的版本时，历史 AI API Key 会被清空。后端启动并完成迁移后，管理员必须在 AI 配置页重新填写 Key，再执行连接测试和智能导入。
 
 启动完成后访问 `http://127.0.0.1:8080/api/health`，应返回 `{"status":"UP"}`。附件目录应由运行账号拥有读写权限；上传时会保留临时文件所需空间，并按 `ATTACHMENTS_MINIMUM_FREE_SPACE_BYTES` 预留剩余容量。
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { TableColumnsType } from 'ant-design-vue'
-import { Button, Card, Empty, Input, Modal, Pagination, Select, Table, message } from 'ant-design-vue'
+import { Button, Card, Empty, Input, Modal, Select, Table, message } from 'ant-design-vue'
+import AppPagination from './AppPagination.vue'
 import { FilterOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
@@ -42,7 +43,7 @@ const items = ref<Item[]>([])
 const total = ref(0)
 const currentPage = ref(0)
 const scopeCounts = ref({ unfinished: 0, all: 0 })
-const pageSize = 20
+const pageSize = 10
 const loading = ref(false)
 const sortBy = ref('')
 const sortDirection = ref<'asc' | 'desc'>('asc')
@@ -420,7 +421,7 @@ onBeforeUnmount(() => {
           </template>
           <template #emptyText><Empty :image="Empty.PRESENTED_IMAGE_SIMPLE" description="暂无需求" /></template>
         </Table>
-        <div class="pagination-bar"><span>共 {{ total }} 条</span><Pagination class="list-pagination" :current="currentPage + 1" :total="total" :page-size="pageSize" :show-size-changer="false" :disabled="refreshing" @change="(page) => applyFilters(page - 1)" /></div>
+        <div class="pagination-bar"><span>共 {{ total }} 条</span><AppPagination class="list-pagination" :current="currentPage + 1" :total="total" :page-size="pageSize" :show-size-changer="false" :disabled="refreshing" @change="(page) => applyFilters(page - 1)" /></div>
       </Card>
     </template>
   </section>

@@ -40,10 +40,11 @@ const pages: PageDefinition[] = [
 
 const router = useRouter()
 const route = useRoute()
-const { currentUser, initializing, isLoggedIn, isHandler, logout, clearSession, role } = useAuth()
+const { currentUser, initializing, isLoggedIn, logout, clearSession, role } = useAuth()
 const { createFormDirty, setCreateFormDirty } = useCreateFormState()
 const { unreadCount, refreshUnreadCount, clearUnreadCount } = useNotifications()
 const globalKeyword = ref('')
+const detailCanEdit = ref(false)
 
 const visiblePages = computed(() => pages.filter((page) => role.value !== null && page.roles.includes(role.value)))
 const activePage = computed<PageKey>(() => {
@@ -94,9 +95,9 @@ const stopNotificationRefresh = () => {
   }
 }
 
-watch([isLoggedIn, isHandler], ([loggedIn, canUseNotifications]) => {
+watch(isLoggedIn, (loggedIn) => {
   stopNotificationRefresh()
-  if (!loggedIn || !canUseNotifications) {
+  if (!loggedIn) {
     clearUnreadCount()
     return
   }
@@ -132,9 +133,16 @@ const handleMenuClick = ({ key }: { key: string | number }) => {
 }
 
 const openNotificationCenter = () => {
-  if (!isHandler.value) return
   void router.push({ name: 'notification-center' })
 }
+
+const handleRequirementEditabilityChange = (canEdit: boolean) => {
+  detailCanEdit.value = canEdit
+}
+
+watch(() => [route.name, route.params.id], () => {
+  detailCanEdit.value = false
+})
 
 const roleLabel = computed(() => ({
   USER: '普通用户',
@@ -169,7 +177,7 @@ const searchRequirements = () => {
         <div class="app-user-box">
           <span class="app-user-name" data-test="current-user">{{ currentUser?.displayName }}</span>
           <span class="app-user-role">{{ roleLabel }}</span>
-          <Button v-if="isHandler" type="text" class="notification-bell" data-test="notification-bell" title="站内消息" aria-label="站内消息" @click="openNotificationCenter">
+          <Button type="text" class="notification-bell" data-test="notification-bell" title="站内消息" aria-label="站内消息" @click="openNotificationCenter">
             <Badge :count="unreadCount" :overflow-count="99" :show-zero="false">
               <BellOutlined />
             </Badge>
@@ -205,7 +213,7 @@ const searchRequirements = () => {
             <template v-if="route.name === 'requirement-detail' && route.query.edit !== '1'" #extra>
               <div class="requirement-page-actions">
                 <Button @click="router.push({ name: 'requirement-list' })">返回列表</Button>
-                <Button type="primary" data-test="edit-from-detail" @click="router.replace({ name: 'requirement-detail', params: route.params, query: { ...route.query, edit: '1' } })">编辑需求</Button>
+                <Button v-if="detailCanEdit" type="primary" data-test="edit-from-detail" @click="router.replace({ name: 'requirement-detail', params: route.params, query: { ...route.query, edit: '1' } })">编辑需求</Button>
               </div>
             </template>
             <template v-else-if="route.name === 'requirement-list'" #extra>
@@ -213,7 +221,7 @@ const searchRequirements = () => {
             </template>
             <RouterView v-slot="{ Component }">
               <KeepAlive :include="cachedViews">
-                <component :is="Component" />
+                <component :is="Component" @requirement-editability-change="handleRequirementEditabilityChange" />
               </KeepAlive>
             </RouterView>
           </PageContainer>

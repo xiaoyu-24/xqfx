@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Alert, Breadcrumb, BreadcrumbItem, Button, Card, Checkbox, Empty, Input, Modal, Pagination, Result, Select, Spin, TabPane, Tabs, Tag, Tooltip, message } from 'ant-design-vue'
+import { Alert, Breadcrumb, BreadcrumbItem, Button, Card, Checkbox, Empty, Input, Modal, Result, Select, Spin, TabPane, Tabs, Tag, Tooltip, message } from 'ant-design-vue'
+import AppPagination from './AppPagination.vue'
 import { ArrowLeftOutlined, LinkOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
@@ -45,7 +46,7 @@ const summary = ref<Summary>({ currentCount: 0, candidateCount: 0, unassignedCou
 const activeTab = ref<'current' | 'candidate'>('current')
 const currentPage = ref(1)
 const candidatePage = ref(1)
-const pageSize = 20
+const pageSize = 10
 const currentData = ref<PageData>({ content: [], totalElements: 0, totalPages: 0, page: 0, size: pageSize })
 const candidateData = ref<PageData>({ content: [], totalElements: 0, totalPages: 0, page: 0, size: pageSize })
 const currentLoading = ref(false)
@@ -312,7 +313,7 @@ const returnToSystems = () => { void router.push({ name: 'system-management' }) 
             </table>
             <Empty v-if="!currentLoading && !currentData.content.length" description="当前版本暂无需求" />
           </div>
-          <div class="pagination-row"><span>共 {{ currentData.totalElements }} 条</span><Pagination :current="currentPage" :page-size="pageSize" :total="currentData.totalElements" :show-size-changer="false" @change="changeCurrentPage" /></div>
+          <div class="pagination-row"><span>共 {{ currentData.totalElements }} 条</span><AppPagination :current="currentPage" :page-size="pageSize" :total="currentData.totalElements" :show-size-changer="false" @change="changeCurrentPage" /></div>
         </section>
 
         <section v-else data-test="candidate-requirements-tab">
@@ -342,7 +343,7 @@ const returnToSystems = () => { void router.push({ name: 'system-management' }) 
             </table>
             <Empty v-if="!candidateLoading && !candidateData.content.length" description="暂无可纳入需求" />
           </div>
-          <div class="pagination-row"><span>共 {{ candidateData.totalElements }} 条</span><Pagination :current="candidatePage" :page-size="pageSize" :total="candidateData.totalElements" :show-size-changer="false" @change="changeCandidatePage" /></div>
+          <div class="pagination-row"><span>共 {{ candidateData.totalElements }} 条</span><AppPagination :current="candidatePage" :page-size="pageSize" :total="candidateData.totalElements" :show-size-changer="false" @change="changeCandidatePage" /></div>
         </section>
       </Card>
     </template>

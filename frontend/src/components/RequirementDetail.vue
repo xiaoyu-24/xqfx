@@ -13,6 +13,10 @@ import { usePageRefresh } from '../composables/usePageRefresh'
 import ContentSkeleton from './ContentSkeleton.vue'
 import RequirementEditor from './RequirementEditor.vue'
 
+const emit = defineEmits<{
+  'requirement-editability-change': [canEdit: boolean]
+}>()
+
 type SystemItem = { id: number; name: string; ownerName?: string | null }
 type Attachment = {
   id: number
@@ -81,10 +85,14 @@ const progressLoading = ref(false)
 const progressForm = ref({ content: '', status: '' })
 const progressError = ref('')
 const { handleError } = useApiError()
-const { isHandler } = useAuth()
+const { currentUser, isHandler } = useAuth()
 let previewRefreshTimer: ReturnType<typeof setTimeout> | undefined
 
 const requirementId = computed(() => Number(route.params.id))
+const canEdit = computed(() => isHandler.value || (
+  requirement.value?.requesterUserId === currentUser.value?.id
+  && (requirement.value?.saveType === 'DRAFT' || ['PENDING_EVALUATION', 'CONFIRMED'].includes(requirement.value?.status ?? ''))
+))
 const previewOpen = computed({
   get: () => previewAttachment.value !== null,
   set: (open: boolean) => { if (!open) previewAttachment.value = null },
@@ -154,6 +162,7 @@ const loadRequirement = async () => {
 
   loading.value = true
   loadError.value = ''
+  emit('requirement-editability-change', false)
   clearPreviewRefresh()
   try {
     const systemRequest = isHandler.value
@@ -167,12 +176,14 @@ const loadRequirement = async () => {
       api.get(`/requirements/${requirementId.value}/version-history`),
     ])
     requirement.value = detail.data
+    emit('requirement-editability-change', canEdit.value)
     attachments.value = Array.isArray(attachmentList.data) ? attachmentList.data : []
     systems.value = Array.isArray(systemList.data) ? systemList.data : []
     progresses.value = Array.isArray(progressList.data) ? progressList.data : []
     versionChanges.value = Array.isArray(versionHistory.data) ? versionHistory.data : []
     schedulePreviewRefresh()
   } catch (error: unknown) {
+    emit('requirement-editability-change', false)
     const status = (error as { response?: { status?: number } }).response?.status
     if (!requirement.value) {
       loadError.value = status === 404 ? '该需求不存在或已被删除' : '加载需求详情失败，请稍后重试'
@@ -259,7 +270,10 @@ watch(() => route.params.id, () => {
 watch(editing, (isEditing, wasEditing) => {
   if (!isEditing && wasEditing) void refresh()
 })
-onBeforeUnmount(clearPreviewRefresh)
+onBeforeUnmount(() => {
+  clearPreviewRefresh()
+  emit('requirement-editability-change', false)
+})
 </script>
 
 <template>

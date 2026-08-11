@@ -61,7 +61,7 @@ class AiAnalysisService {
 
         var departments = dictionaryService.listActiveEntities(DictionaryCategory.DEPARTMENT);
         var types = dictionaryService.listActiveEntities(DictionaryCategory.REQUIREMENT_TYPE);
-        var apiKey = configService.getDecryptedApiKey(config);
+        var apiKey = configService.getApiKey(config);
         var prompt = buildPrompt(text, departments, types);
 
         try {

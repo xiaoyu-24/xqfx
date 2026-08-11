@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Button, Card, Input, Modal, Table, Tabs, TabPane, Tag, message } from 'ant-design-vue'
+import AppPagination from './AppPagination.vue'
 import { EditOutlined, PlusOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
 import { useDictionaryOptions, type DictionaryCategory, type DictionaryItem } from '../composables/useDictionaryOptions'
@@ -14,6 +15,8 @@ const modalOpen = ref(false)
 const modalMode = ref<'create' | 'rename'>('create')
 const editingItem = ref<DictionaryItem | null>(null)
 const saving = ref(false)
+const currentPage = ref(1)
+const pageSize = 10
 const form = reactive({ name: '' })
 const { loadDictionaryOptions } = useDictionaryOptions()
 
@@ -25,6 +28,12 @@ const columns = [
   { title: '操作', key: 'actions', width: 220 },
 ]
 const tableRecord = (record: Record<string, unknown>) => record as unknown as DictionaryItem
+const totalPages = computed(() => Math.max(1, Math.ceil(items.value.length / pageSize)))
+const pagedItems = computed(() => items.value.slice((currentPage.value - 1) * pageSize, currentPage.value * pageSize))
+
+watch(() => items.value.length, () => {
+  currentPage.value = Math.min(currentPage.value, totalPages.value)
+})
 
 const loadItems = async () => {
   loading.value = true
@@ -42,6 +51,7 @@ const refreshAfterMutation = async () => {
 
 const changeCategory = async (nextCategory: string | number) => {
   category.value = nextCategory as DictionaryCategory
+  currentPage.value = 1
   await refresh()
 }
 
@@ -66,9 +76,11 @@ const save = async () => {
     return
   }
   saving.value = true
+  let createdItemId: number | null = null
   try {
     if (modalMode.value === 'create') {
-      await api.post('/dictionaries', { category: category.value, name })
+      const { data } = await api.post('/dictionaries', { category: category.value, name })
+      if (Number.isInteger(data?.id)) createdItemId = data.id
       message.success(`${categoryLabel.value}已新增`)
     } else if (editingItem.value) {
       await api.put(`/dictionaries/${editingItem.value.id}`, {
@@ -79,6 +91,10 @@ const save = async () => {
     }
     modalOpen.value = false
     await refreshAfterMutation()
+    if (createdItemId !== null) {
+      const createdIndex = items.value.findIndex((item) => item.id === createdItemId)
+      if (createdIndex >= 0) currentPage.value = Math.floor(createdIndex / pageSize) + 1
+    }
   } catch (error: unknown) {
     const response = (error as { response?: { data?: { message?: string } } }).response
     message.error(response?.data?.message || '保存失败，请稍后重试')
@@ -136,7 +152,7 @@ const { loaded, refresh } = usePageRefresh('dictionaries', loadItems)
         <TabPane key="REQUIREMENT_TYPE" tab="需求类型" />
       </Tabs>
 
-      <Table :columns="columns" :data-source="items" row-key="id" :pagination="false">
+      <Table :columns="columns" :data-source="pagedItems" row-key="id" :pagination="false">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
             <Tag v-if="record.disabled" color="default"><StopOutlined /> 已停用</Tag>
@@ -153,6 +169,10 @@ const { loaded, refresh } = usePageRefresh('dictionaries', loadItems)
           </template>
         </template>
       </Table>
+      <div v-if="items.length" class="pagination-row">
+        <span>共 {{ items.length }} 条</span>
+        <AppPagination v-model:current="currentPage" :page-size="pageSize" :total="items.length" :show-size-changer="false" :show-less-items="true" responsive />
+      </div>
     </Card>
 
     <Modal v-model:open="modalOpen" :title="modalTitle" :confirm-loading="saving" @ok="save">
@@ -182,5 +202,19 @@ const { loaded, refresh } = usePageRefresh('dictionaries', loadItems)
 .dictionary-form-field label {
   color: rgba(0, 0, 0, 0.88);
   font-size: 14px;
+}
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .pagination-row { align-items: flex-start; flex-direction: column; }
 }
 </style>
