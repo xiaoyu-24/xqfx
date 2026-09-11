@@ -4,7 +4,7 @@ import { Button, DatePicker, FormItem, Input, Modal, Result, Select, Space, mess
 import { InboxOutlined, InfoCircleOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
 import { markChanged } from '../composables/refreshBus'
-import { useApiError } from '../composables/useApiError'
+import { useApiError, apiErrorDetails } from '../composables/useApiError'
 import { useFormErrors } from '../composables/useFormErrors'
 import { useDictionaryOptions, type DictionaryItem } from '../composables/useDictionaryOptions'
 import { useAuth } from '../composables/useAuth'
@@ -209,8 +209,9 @@ const uploadAttachments = async () => {
     schedulePreviewRefresh()
     message.success('附件上传成功')
     markChanged(['requirements', 'dashboard', 'overview'])
-  } catch {
-    message.error('附件上传失败，未完成的文件可重新选择后上传')
+  } catch (error) {
+    const { message: serverMessage } = apiErrorDetails(error)
+    message.error(serverMessage || '附件上传失败，未完成的文件可重新选择后上传')
   } finally {
     uploading.value = false
   }

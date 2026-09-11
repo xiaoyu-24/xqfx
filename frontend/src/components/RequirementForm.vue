@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { markChanged } from '../composables/refreshBus'
 import { useCreateFormState } from '../composables/useCreateFormState'
+import { apiErrorDetails } from '../composables/useApiError'
 import { useDictionaryOptions } from '../composables/useDictionaryOptions'
 import { useAuth } from '../composables/useAuth'
 import { urgencyOptions } from '../constants/urgencyConfig'
@@ -206,7 +207,7 @@ const submit = async (draft: boolean) => {
     const body = requestBody()
     const { data } = await api.post(draft ? '/requirements/drafts' : '/requirements', body)
     if (selectedFiles.value.length > 0 && data.id) {
-      try { await uploadFiles(data.id) } catch { message.warning('需求已保存，但部分附件上传失败，可稍后在详情页重试') }
+      try { await uploadFiles(data.id) } catch (error) { const { message: serverMessage } = apiErrorDetails(error); message.warning(serverMessage || '需求已保存，但部分附件上传失败，可稍后在详情页重试') }
     }
     lastSavedSnapshot.value = createSnapshot()
     message.success(draft ? '暂存成功' : '保存成功')

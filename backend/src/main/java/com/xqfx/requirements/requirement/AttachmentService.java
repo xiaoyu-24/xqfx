@@ -24,7 +24,7 @@ import org.springframework.core.io.FileSystemResource;
 
 @Service
 class AttachmentService {
-    private static final Set<String> ALLOWED = Set.of("jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "xls", "xlsx");
+    private static final Set<String> OLE_EXTENSIONS = Set.of("doc", "xls");
     private final RequirementRepository requirements; private final AttachmentRepository attachments; private final Path root; private final Path previewRoot; private final long minimumFreeSpaceBytes; private final AttachmentPreviewService previewService;
     @Autowired AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, @Value("${app.attachments.root-directory:./uploads}") String rootDirectory, @Value("${app.attachments.minimum-free-space-bytes:0}") long minimumFreeSpaceBytes, @Value("${app.attachments.preview-directory:./previews}") String previewDirectory, AttachmentPreviewService previewService) { this(requirements,attachments,rootDirectory,minimumFreeSpaceBytes,Path.of(previewDirectory),previewService); }
     AttachmentService(RequirementRepository requirements, AttachmentRepository attachments, String rootDirectory, long minimumFreeSpaceBytes) { this(requirements,attachments,rootDirectory,minimumFreeSpaceBytes,Path.of(rootDirectory).resolve("previews"),null); }
@@ -34,8 +34,6 @@ class AttachmentService {
         assertCanEdit(requirement, actor);
         var originalName=file.getOriginalFilename()==null?"":Path.of(file.getOriginalFilename()).getFileName().toString();
         var extension=extension(originalName);
-        var contentType=file.getContentType()==null?"application/octet-stream":file.getContentType();
-        if(!ALLOWED.contains(extension) || !matchesContentType(extension, contentType)) throw new IllegalArgumentException("不支持的附件格式");
         Path temporary = null;
         Path target = null;
         boolean saved = false;
@@ -44,8 +42,18 @@ class AttachmentService {
             if (Files.getFileStore(root).getUsableSpace() - minimumFreeSpaceBytes < file.getSize()) throw new ResponseStatusException(HttpStatus.INSUFFICIENT_STORAGE,"附件目录剩余空间不足");
             temporary=Files.createTempFile(root,"upload-",".tmp");
             var checksum=copyAndChecksum(file.getInputStream(),temporary);
-            if (!hasValidFileSignature(extension, temporary)) throw new IllegalArgumentException("附件内容与文件格式不匹配");
-            var storedName=UUID.randomUUID()+"."+extension;
+            var format=detectActualFormat(temporary);
+            if (format == null) throw new IllegalArgumentException("无法识别附件内容格式，请确认文件完整或转换为受支持格式（PDF / Word / 图片等）");
+            var storedExtension = format.extension();
+            var storedContentType = format.contentType();
+            if (storedExtension.equals("ole")) {
+                if (!OLE_EXTENSIONS.contains(extension)) throw new IllegalArgumentException("不支持的附件格式");
+                storedExtension = extension;
+                storedContentType = extension.equals("xls") ? "application/vnd.ms-excel" : "application/msword";
+            } else if (storedExtension.equals("zip")) {
+                throw new IllegalArgumentException("附件内容为 ZIP 压缩包，不在支持的格式内");
+            }
+            var storedName=UUID.randomUUID()+"."+storedExtension;
             target=root.resolve(storedName).normalize();
             if(!target.startsWith(root)) throw new IllegalArgumentException("附件路径无效");
             try {
@@ -54,7 +62,7 @@ class AttachmentService {
                 Files.move(temporary,target);
             }
             temporary=null;
-            var attachment = attachments.save(new AttachmentEntity(requirement,originalName,storedName,storedName,contentType,file.getSize(),checksum));
+            var attachment = attachments.save(new AttachmentEntity(requirement,originalName,storedName,storedName,storedContentType,file.getSize(),checksum));
             saved = true;
             if(previewService!=null&&attachment.id()!=null&&attachment.previewStatus()==AttachmentPreviewStatus.PENDING) previewService.schedule(attachment.id());
             return AttachmentResponse.from(attachment);
@@ -98,24 +106,26 @@ class AttachmentService {
     }
     record AttachmentFile(Resource resource,String originalName,String contentType) { }
     private static String extension(String name) { var index=name.lastIndexOf('.'); return index<0?"":name.substring(index+1).toLowerCase(); }
-    private static boolean matchesContentType(String extension, String contentType) { return switch (extension) { case "jpg", "jpeg" -> contentType.equals("image/jpeg"); case "png" -> contentType.equals("image/png"); case "gif" -> contentType.equals("image/gif"); case "webp" -> contentType.equals("image/webp"); case "pdf" -> contentType.equals("application/pdf"); case "doc" -> contentType.equals("application/msword"); case "docx" -> contentType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document"); case "xls" -> contentType.equals("application/vnd.ms-excel"); case "xlsx" -> contentType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); default -> false; }; }
-    private static boolean hasValidFileSignature(String extension, Path file) {
+    record ActualFormat(String extension, String contentType) { }
+    private static ActualFormat detectActualFormat(Path file) {
+        byte[] header;
         try (var input = Files.newInputStream(file)) {
-            var header = input.readNBytes(12);
-            return switch (extension) {
-                case "jpg", "jpeg" -> startsWith(header, 0xFF, 0xD8, 0xFF);
-                case "png" -> startsWith(header, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A);
-                case "gif" -> startsWith(header, "GIF87a") || startsWith(header, "GIF89a");
-                case "webp" -> startsWith(header, "RIFF") && startsWith(header, 8, "WEBP");
-                case "pdf" -> startsWith(header, "%PDF-");
-                case "doc", "xls" -> startsWith(header, 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1);
-                case "docx" -> hasZipDirectory(file, "word/");
-                case "xlsx" -> hasZipDirectory(file, "xl/");
-                default -> false;
-            };
+            header = input.readNBytes(12);
         } catch (IOException exception) {
-            return false;
+            return null;
         }
+        if (startsWith(header, 0xFF, 0xD8, 0xFF)) return new ActualFormat("jpg", "image/jpeg");
+        if (startsWith(header, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) return new ActualFormat("png", "image/png");
+        if (startsWith(header, "GIF87a") || startsWith(header, "GIF89a")) return new ActualFormat("gif", "image/gif");
+        if (startsWith(header, "RIFF") && startsWith(header, 8, "WEBP")) return new ActualFormat("webp", "image/webp");
+        if (startsWith(header, "%PDF-")) return new ActualFormat("pdf", "application/pdf");
+        if (startsWith(header, 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1)) return new ActualFormat("ole", null);
+        if (startsWith(header, 0x50, 0x4B)) {
+            if (hasZipDirectory(file, "word/")) return new ActualFormat("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            if (hasZipDirectory(file, "xl/")) return new ActualFormat("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            return new ActualFormat("zip", null);
+        }
+        return null;
     }
     private static boolean hasZipDirectory(Path file, String directory) {
         try (var zip = new ZipFile(file.toFile())) {
