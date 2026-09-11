@@ -39,3 +39,7 @@ Thumbs.db
 
 # Image files
 *.png
+
+# 本机私有文件：开发机 classpath 与含数据库密码的启动脚本（由本地生成，不入库）
+backend/run-backend.args
+backend/start-backend.cmd
