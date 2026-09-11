@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { Button, Card, Collapse, CollapsePanel, DatePicker, Form, Input, Select, message } from 'ant-design-vue'
+import { Alert, Button, Card, Collapse, CollapsePanel, DatePicker, Form, Input, Select, message } from 'ant-design-vue'
 import { RobotOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
@@ -12,6 +12,7 @@ import { useAuth } from '../composables/useAuth'
 import { urgencyOptions } from '../constants/urgencyConfig'
 import { useFormErrors } from '../composables/useFormErrors'
 import { usePageRefresh } from '../composables/usePageRefresh'
+import { useClipboardAttachments } from '../composables/useClipboardAttachments'
 import ContentSkeleton from './ContentSkeleton.vue'
 
 const router = useRouter()
@@ -43,19 +44,7 @@ const analyzeWithAi = async () => {
   aiAnalyzing.value = true
   try {
     const { data } = await api.post('/ai/analyze', { text: aiText.value })
-    let filled = 0
-    if (data.requesterName && !form.requesterName) { form.requesterName = data.requesterName; filled++ }
-    if (data.departmentId && !form.departmentId) { form.departmentId = String(data.departmentId); filled++ }
-    if (data.title && !form.title) { form.title = data.title; filled++ }
-    if (data.typeId && !form.typeId) { form.typeId = String(data.typeId); filled++ }
-    if (data.content && !form.content) { form.content = data.content; filled++ }
-    if (data.periodStartDate && !form.periodStartDate) { form.periodStartDate = data.periodStartDate; filled++ }
-    if (data.periodEndDate && !form.periodEndDate) { form.periodEndDate = data.periodEndDate; filled++ }
-    if (data.systemId && !form.systemId) {
-      systemSelect.value = String(data.systemId)
-      form.systemId = String(data.systemId)
-      filled++
-    }
+    const filled = applyAiAnalysis(data)
     if (filled > 0) {
       message.success(`AI 已识别并填充 ${filled} 个字段`)
     } else {
@@ -69,6 +58,96 @@ const analyzeWithAi = async () => {
   }
 }
 
+// 共享填充逻辑（design.md D8）：只填空字段、不覆盖已有内容；返回填充字段数
+const applyAiAnalysis = (data: {
+  requesterName?: string | null
+  departmentId?: number | null
+  title?: string | null
+  typeId?: number | null
+  content?: string | null
+  periodStartDate?: string | null
+  periodEndDate?: string | null
+  systemId?: number | null
+}): number => {
+  let filled = 0
+  if (data.requesterName && !form.requesterName) { form.requesterName = data.requesterName; filled++ }
+  if (data.departmentId && !form.departmentId) { form.departmentId = String(data.departmentId); filled++ }
+  if (data.title && !form.title) { form.title = data.title; filled++ }
+  if (data.typeId && !form.typeId) { form.typeId = String(data.typeId); filled++ }
+  if (data.content && !form.content) { form.content = data.content; filled++ }
+  if (data.periodStartDate && !form.periodStartDate) { form.periodStartDate = data.periodStartDate; filled++ }
+  if (data.periodEndDate && !form.periodEndDate) { form.periodEndDate = data.periodEndDate; filled++ }
+  if (data.systemId && !form.systemId) {
+    systemSelect.value = String(data.systemId)
+    form.systemId = String(data.systemId)
+    filled++
+  }
+  return filled
+}
+
+// 截图识别（add-image-ai-recognition）
+const aiImageAnalyzing = ref(false)
+const aiImageInput = ref<HTMLInputElement | null>(null)
+const allowedAiImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const maxAiImageBytes = 10 * 1024 * 1024
+
+const analyzeImageFile = async (file: File) => {
+  // 客户端预校验（spec "客户端预校验"）：不通过不发请求
+  if (!allowedAiImageTypes.has(file.type)) {
+    message.warning('仅支持 PNG / JPG / WebP 格式的图片')
+    return
+  }
+  if (file.size > maxAiImageBytes) {
+    message.warning('图片大小不能超过 10MB')
+    return
+  }
+  aiImageAnalyzing.value = true
+  try {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await api.post('/ai/analyze-image', body)
+    const filled = applyAiAnalysis(data)
+    if (filled > 0) {
+      message.success(`AI 已识别并填充 ${filled} 个字段`)
+    } else {
+      message.info('AI 未能从图片中识别出有效字段')
+    }
+  } catch (error: unknown) {
+    const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+    message.error(msg || 'AI 图片识别失败，请稍后重试')
+  } finally {
+    aiImageAnalyzing.value = false
+  }
+}
+
+const pickAiImage = () => aiImageInput.value?.click()
+const onAiImageSelected = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) void analyzeImageFile(file)
+}
+
+// AI 面板内粘贴截图：同步取 image/* blob；取到时拦截并阻断冒泡到附件区粘贴监听（design.md D7）
+const onAiPanelPaste = (event: ClipboardEvent) => {
+  const data = event.clipboardData
+  if (!data) return
+  let imageBlob: Blob | null = null
+  for (let i = 0; i < data.items.length; i += 1) {
+    const item = data.items[i]
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      imageBlob = item.getAsFile() // 必须同步调用
+      break
+    }
+  }
+  if (!imageBlob) return // 不拦截普通文本粘贴
+  event.preventDefault()
+  event.stopPropagation()
+  const blob = imageBlob
+  const file = blob instanceof File ? blob : new File([blob], `截图-${Date.now()}.png`, { type: blob.type })
+  void analyzeImageFile(file)
+}
+
 const submitting = ref(false)
 const systems = ref<Array<{ id: number; name: string; status: string }>>([])
 const selectedFiles = ref<File[]>([])
@@ -77,6 +156,17 @@ const uploadProgress = ref(0)
 const isDragging = ref(false)
 const attachmentInput = ref<HTMLInputElement | null>(null)
 const allowedAttachmentExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'])
+const maxAttachmentSizeBytes = 100 * 1024 * 1024
+// 粘贴上传相关状态（tasks 3.2）
+const formRootRef = ref<HTMLElement | null>(null)
+const attachmentDropzoneRef = ref<HTMLElement | null>(null)
+const pasteTargetActive = ref(false)
+const remoteImageUrls = ref<string[]>([])
+const remoteHintVisible = ref(false)
+const { parseClipboard } = useClipboardAttachments({
+  allowedExtensions: allowedAttachmentExtensions,
+  maxFileSizeBytes: maxAttachmentSizeBytes,
+})
 
 const createSnapshot = () => JSON.stringify({
   systemSelect: systemSelect.value,
@@ -182,6 +272,32 @@ const dropFiles = (event: DragEvent) => {
 }
 const openAttachmentPicker = () => attachmentInput.value?.click()
 const removeSelectedFile = (index: number) => { selectedFiles.value.splice(index, 1) }
+
+// 粘贴上传（tasks 3.3）：表单容器根节点监听 paste 事件，按 design.md D2 焦点分流
+const onPaste = async (event: ClipboardEvent) => {
+  // 分流 1：event.target 不在表单容器内（Ant Modal / Popover 通过 teleport 挂到 body）→ 不拦截
+  if (!formRootRef.value || !formRootRef.value.contains(event.target as Node)) return
+  const result = await parseClipboard(event)
+  // 分流 2：剪贴板只有纯文本（无可解析内容）→ 保留浏览器默认行为
+  if (result.files.length === 0 && result.remoteImageUrls.length === 0 && result.rejectedReasons.length === 0) return
+  // 分流 3：拦截默认行为，按附件路径处理
+  event.preventDefault()
+  if (result.files.length > 0) {
+    addFiles(result.files)
+    message.success(`已添加 ${result.files.length} 个附件`)
+  }
+  if (result.rejectedReasons.length > 0) {
+    message.warning(result.rejectedReasons.join('；'))
+  }
+  if (result.remoteImageUrls.length > 0) {
+    remoteImageUrls.value = result.remoteImageUrls
+    remoteHintVisible.value = true
+  }
+  // 附件区高亮 1.2 秒 + 平滑滚动（对应 spec "可访问性与用户反馈 / 粘贴成功反馈"）
+  pasteTargetActive.value = true
+  setTimeout(() => { pasteTargetActive.value = false }, 1200)
+  attachmentDropzoneRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 const uploadFiles = async (requirementId: number) => {
   uploadProgress.value = 0
   const files = [...selectedFiles.value]
@@ -222,7 +338,7 @@ const submit = async (draft: boolean) => {
 </script>
 
 <template>
-  <section class="requirement-form-shell" aria-labelledby="requirement-form-title" data-test="ai-import-text">
+  <section ref="formRootRef" class="requirement-form-shell" aria-labelledby="requirement-form-title" data-test="ai-import-text" @paste="onPaste">
     <ContentSkeleton v-if="!loaded" preset="form" :rows="8" />
     <Card v-else class="requirement-form-card" data-test="requirement-form-card" :bordered="false">
       <Collapse class="ai-import-collapse" :bordered="false">
@@ -230,9 +346,16 @@ const submit = async (draft: boolean) => {
           <template #header>
             <span class="ai-import-header"><RobotOutlined /> AI 智能导入</span>
           </template>
-          <p class="ai-import-hint">粘贴一段需求描述文本，AI 将自动识别并填充空白字段（已有内容不会被覆盖，不会自动提交）。</p>
-          <Input.TextArea v-model:value="aiText" data-test="ai-import-input" :rows="4" placeholder="请粘贴需求描述文本…" />
-          <Button class="ai-analyze-btn" type="primary" ghost :loading="aiAnalyzing" @click="analyzeWithAi">分析并填充</Button>
+          <div class="ai-import-body" @paste="onAiPanelPaste">
+            <p class="ai-import-hint">粘贴一段需求描述文本，AI 将自动识别并填充空白字段（已有内容不会被覆盖，不会自动提交）。</p>
+            <Input.TextArea v-model:value="aiText" data-test="ai-import-input" :rows="4" placeholder="请粘贴需求描述文本…" />
+            <div class="ai-import-actions">
+              <Button class="ai-analyze-btn" type="primary" ghost :loading="aiAnalyzing" :disabled="aiImageAnalyzing" @click="analyzeWithAi">分析并填充</Button>
+              <Button class="ai-analyze-btn" data-test="ai-image-pick" :loading="aiImageAnalyzing" :disabled="aiAnalyzing" @click="pickAiImage">识别需求截图</Button>
+              <input ref="aiImageInput" data-test="ai-image-input" class="attachment-input" type="file" accept="image/png,image/jpeg,image/webp" @change="onAiImageSelected">
+            </div>
+            <p class="ai-import-hint">截图将发送至已配置的 AI 服务；支持 PNG / JPG / WebP，单张不超过 10MB；也可在面板内直接 Ctrl+V 粘贴截图。</p>
+          </div>
         </CollapsePanel>
       </Collapse>
 
@@ -283,8 +406,24 @@ const submit = async (draft: boolean) => {
           </Form.Item>
 
           <Form.Item class="full-width attachment-form-item" data-test="attachment-field" label="附件">
-            <p class="attachment-hint">支持图片、PDF、Word、Excel，单个文件最大 100MB。</p>
-            <div class="attachment-dropzone" :class="{ 'is-dragging': isDragging }" data-test="attachment-dropzone" role="button" tabindex="0" @click="openAttachmentPicker" @keydown.enter.prevent="openAttachmentPicker" @dragenter.prevent="isDragging = true" @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="dropFiles">
+            <p class="attachment-hint">支持图片、PDF、Word、Excel，单个文件最大 100MB。可点击选择、拖入，或直接 Ctrl+V 粘贴截图与文件。</p>
+            <Alert
+              v-if="remoteHintVisible && remoteImageUrls.length"
+              class="attachment-remote-hint"
+              type="info"
+              show-icon
+              closable
+              data-test="attachment-remote-hint"
+              @close="remoteHintVisible = false"
+            >
+              <template #message>检测到 {{ remoteImageUrls.length }} 张远程图片，出于安全与版权考虑不会自动下载。如需作为附件，请右键图片“另存为”后再上传。</template>
+              <template #description>
+                <ul class="attachment-remote-hint-list">
+                  <li v-for="(url, index) in remoteImageUrls" :key="index"><span>{{ url }}</span></li>
+                </ul>
+              </template>
+            </Alert>
+            <div ref="attachmentDropzoneRef" class="attachment-dropzone" :class="{ 'is-dragging': isDragging, 'is-paste-target': pasteTargetActive }" data-test="attachment-dropzone" role="button" tabindex="0" @click="openAttachmentPicker" @keydown.enter.prevent="openAttachmentPicker" @dragenter.prevent="isDragging = true" @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="dropFiles">
               <Button type="dashed" block>拖拽文件到此处，或点击选择</Button>
               <input ref="attachmentInput" data-test="attachment-input" class="attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectFiles">
             </div>
@@ -342,6 +481,13 @@ const submit = async (draft: boolean) => {
 
 .ai-analyze-btn {
   margin-top: 10px;
+}
+
+.ai-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .form-title,

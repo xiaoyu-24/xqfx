@@ -33,6 +33,7 @@ app:
     preview-concurrency: ${ATTACHMENTS_PREVIEW_CONCURRENCY:2}
   ai:
     request-timeout-seconds: ${AI_REQUEST_TIMEOUT_SECONDS:30}
+    image-request-timeout-seconds: ${AI_IMAGE_REQUEST_TIMEOUT_SECONDS:60}
   notifications:
     reminder-cron: ${NOTIFICATIONS_REMINDER_CRON:0 0 9 * * *}
     stale-after-days: ${NOTIFICATIONS_STALE_AFTER_DAYS:7}

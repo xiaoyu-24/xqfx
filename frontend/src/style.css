@@ -126,6 +126,21 @@ button { font: inherit; }
 
 .attachment-dropzone:hover,
 .attachment-dropzone.is-dragging { border-color: #1677ff; background: #f0f7ff; }
+
+/* 粘贴目标高亮（tasks 5.1）：与拖拽高亮区分，额外加 box-shadow 强调“已接收粘贴” */
+.attachment-dropzone.is-paste-target {
+  border-color: #1677ff;
+  background: #e6f4ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15);
+}
+
+/* 键盘可达性 focus ring（tasks 5.2，对应 spec "可访问性与用户反馈 / 键盘可达性"） */
+.attachment-dropzone:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+  border-color: #1677ff;
+}
+
 .attachment-dropzone input[type="file"] {
   position: absolute;
   width: 1px;
@@ -133,6 +148,27 @@ button { font: inherit; }
   opacity: 0;
   pointer-events: none;
 }
+
+/* 远程图片提示条（tasks 5.3）：与附件区上下留白协调 */
+.attachment-remote-hint { margin: 8px 0; }
+
+/* 远程图片 URL 列表（tasks 5.4）：长 URL 不撑破布局，多项可滚动 */
+.attachment-remote-hint-list {
+  max-height: 160px;
+  margin: 6px 0 0;
+  padding: 0 0 0 18px;
+  overflow-y: auto;
+  list-style: disc;
+}
+.attachment-remote-hint-list li {
+  margin: 2px 0;
+  color: rgba(0, 0, 0, 0.65);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+.attachment-remote-hint-list li span { user-select: all; }
 
 .attachment-upload {
   display: grid;

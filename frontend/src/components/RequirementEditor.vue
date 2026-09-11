@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { Button, DatePicker, FormItem, Input, Modal, Result, Select, Space, message } from 'ant-design-vue'
+import { Alert, Button, DatePicker, FormItem, Input, Modal, Result, Select, Space, message } from 'ant-design-vue'
 import { InboxOutlined, InfoCircleOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api } from '../api'
 import { markChanged } from '../composables/refreshBus'
@@ -10,6 +10,7 @@ import { useDictionaryOptions, type DictionaryItem } from '../composables/useDic
 import { useAuth } from '../composables/useAuth'
 import { urgencyOptions } from '../constants/urgencyConfig'
 import { usePageRefresh } from '../composables/usePageRefresh'
+import { useClipboardAttachments } from '../composables/useClipboardAttachments'
 import ContentSkeleton from './ContentSkeleton.vue'
 
 type SystemItem = { id: number; name: string; status: string }
@@ -68,6 +69,18 @@ const form = reactive({
   periodStartDate: '', periodEndDate: '', urgency: 'MEDIUM', status: '', recordVersion: 0,
 })
 const allowedAttachmentExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'])
+// tasks 4.7 顺带修复：编辑页原本限制 20 MB，与填写页 100 MB 及 spec "附件客户端校验规则 / 单文件大小限制" 不一致，本次统一为 100 MB
+const maxAttachmentSizeBytes = 100 * 1024 * 1024
+// 粘贴上传相关状态（tasks 4.2）
+const formRootRef = ref<HTMLFormElement | null>(null)
+const attachmentDropzoneRef = ref<HTMLElement | null>(null)
+const pasteTargetActive = ref(false)
+const remoteImageUrls = ref<string[]>([])
+const remoteHintVisible = ref(false)
+const { parseClipboard } = useClipboardAttachments({
+  allowedExtensions: allowedAttachmentExtensions,
+  maxFileSizeBytes: maxAttachmentSizeBytes,
+})
 const { departments, requirementTypes, loadDictionaryOptions } = useDictionaryOptions()
 const { currentUser, isHandler } = useAuth()
 const { handleError } = useApiError()
@@ -178,7 +191,7 @@ const loadEditor = async () => {
 const addFiles = (files: File[]) => {
   const accepted = files.filter((file) => {
     const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
-    return allowedAttachmentExtensions.has(extension) && file.size <= 20 * 1024 * 1024
+    return allowedAttachmentExtensions.has(extension) && file.size <= maxAttachmentSizeBytes
   })
   selectedFiles.value = [
     ...selectedFiles.value,
@@ -195,6 +208,31 @@ const dropFiles = (event: DragEvent) => {
   addFiles(Array.from(event.dataTransfer?.files ?? []))
 }
 const openAttachmentPicker = () => attachmentInput.value?.click()
+
+// 粘贴上传（tasks 4.3）：编辑表单根节点监听 paste 事件，按 design.md D2 焦点分流
+// 附件预览 Modal 为 <form> 的兄弟节点（非子节点），Modal.confirm 默认 teleport 到 body，
+// 两者均不会冒泡到 form，天然满足 spec "粘贴事件在模态框、Popover 等浮层内触发" 场景
+const onPaste = async (event: ClipboardEvent) => {
+  if (!formRootRef.value || !formRootRef.value.contains(event.target as Node)) return
+  const result = await parseClipboard(event)
+  if (result.files.length === 0 && result.remoteImageUrls.length === 0 && result.rejectedReasons.length === 0) return
+  event.preventDefault()
+  if (result.files.length > 0) {
+    addFiles(result.files)
+    message.success(`已添加 ${result.files.length} 个附件`)
+    schedulePreviewRefresh()
+  }
+  if (result.rejectedReasons.length > 0) {
+    message.warning(result.rejectedReasons.join('；'))
+  }
+  if (result.remoteImageUrls.length > 0) {
+    remoteImageUrls.value = result.remoteImageUrls
+    remoteHintVisible.value = true
+  }
+  pasteTargetActive.value = true
+  setTimeout(() => { pasteTargetActive.value = false }, 1200)
+  attachmentDropzoneRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 const uploadAttachments = async () => {
   if (selectedFiles.value.length === 0) return
   uploading.value = true
@@ -338,7 +376,7 @@ onBeforeUnmount(clearPreviewRefresh)
     </Result>
 
     <ContentSkeleton v-else-if="!loaded || loading" preset="form" :rows="8" />
-    <form v-else class="requirement-editor-form" data-test="edit-form" @submit.prevent="save()">
+    <form v-else ref="formRootRef" class="requirement-editor-form" data-test="edit-form" @submit.prevent="save()" @paste="onPaste">
         <nav class="editor-breadcrumb" aria-label="编辑需求导航">
           <button type="button" @click="emit('returnList')">需求列表</button>
           <span>/</span>
@@ -379,11 +417,27 @@ onBeforeUnmount(clearPreviewRefresh)
             <FormItem class="full-width" label="需求内容" :required="!isDraft" :validate-status="errors.content ? 'error' : undefined" :help="errors.content"><Input.TextArea v-model:value="form.content" :rows="9" placeholder="请详细描述需求背景、目标与验收标准…" /></FormItem>
             <FormItem class="full-width attachment-form-item" label="附件">
               <div class="edit-attachments">
+                <Alert
+                  v-if="remoteHintVisible && remoteImageUrls.length"
+                  class="attachment-remote-hint"
+                  type="info"
+                  show-icon
+                  closable
+                  data-test="edit-attachment-remote-hint"
+                  @close="remoteHintVisible = false"
+                >
+                  <template #message>检测到 {{ remoteImageUrls.length }} 张远程图片，出于安全与版权考虑不会自动下载。如需作为附件，请右键图片“另存为”后再上传。</template>
+                  <template #description>
+                    <ul class="attachment-remote-hint-list">
+                      <li v-for="(url, index) in remoteImageUrls" :key="index"><span>{{ url }}</span></li>
+                    </ul>
+                  </template>
+                </Alert>
                 <div class="attachment-upload">
-                  <div class="attachment-dropzone" :class="{ 'is-dragging': isDragging }" data-test="edit-attachment-dropzone" role="button" tabindex="0" @click="openAttachmentPicker" @keydown.enter.prevent="openAttachmentPicker" @dragenter.prevent="isDragging = true" @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="dropFiles">
+                  <div ref="attachmentDropzoneRef" class="attachment-dropzone" :class="{ 'is-dragging': isDragging, 'is-paste-target': pasteTargetActive }" data-test="edit-attachment-dropzone" role="button" tabindex="0" @click="openAttachmentPicker" @keydown.enter.prevent="openAttachmentPicker" @dragenter.prevent="isDragging = true" @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="dropFiles">
                     <p class="ant-upload-drag-icon"><InboxOutlined /></p>
                     <p class="ant-upload-text">拖拽附件到此处，或 <b>点击选择文件</b></p>
-                    <p class="attachment-hint">支持 PDF / Word / 图片等常见格式，单个文件不超过 20 MB</p>
+                    <p class="attachment-hint">支持 PDF / Word / 图片等常见格式，单个文件不超过 100MB。可点击选择、拖入，或直接 Ctrl+V 粘贴截图与文件。</p>
                     <input ref="attachmentInput" data-test="edit-attachment-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx" @change="selectFiles">
                   </div>
                   <Button v-if="selectedFiles.length" type="primary" html-type="button" data-test="edit-attachment-upload" :loading="uploading" @click="uploadAttachments">上传附件</Button>
